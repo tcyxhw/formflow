@@ -467,8 +467,28 @@ class FormService:
         if request.owner_user_id:
             query = query.filter(Form.owner_user_id == request.owner_user_id)
 
-        # 统计总数
-        total = query.count()
+        # 先统计总数（使用 func.count 避免子查询问题）
+        total = db.query(func.count(Form.id)).filter(Form.tenant_id == tenant_id).scalar()
+
+        # 重新应用筛选条件
+        query = db.query(Form).filter(Form.tenant_id == tenant_id)
+
+        if request.keyword:
+            query = query.filter(
+                or_(
+                    Form.name.ilike(f"%{request.keyword}%"),
+                    Form.category.ilike(f"%{request.keyword}%")
+                )
+            )
+
+        if request.category:
+            query = query.filter(Form.category == request.category)
+
+        if request.status:
+            query = query.filter(Form.status == request.status.value)
+
+        if request.owner_user_id:
+            query = query.filter(Form.owner_user_id == request.owner_user_id)
 
         # 分页
         offset = (request.page - 1) * request.page_size

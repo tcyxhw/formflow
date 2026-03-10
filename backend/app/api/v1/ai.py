@@ -40,7 +40,7 @@ router = APIRouter()
 
 
 @router.post("/generate-form", summary="AI 生成表单配置")
-async def generate_form(request: AIFormGenerateRequest = Body(...)):
+async def generate_form(request: "AIFormGenerateRequest" = Body(...)):
     """
     根据用户需求描述生成表单配置
 

@@ -46,3 +46,10 @@ class BatchOperationResult(BaseModel):
     failed_count: int = 0
     failed_items: List[dict] = []
     message: str = "批量操作完成"
+
+
+class ResponseSchema(BaseModel):
+    """统一响应Schema"""
+    code: int = 200
+    message: str = "成功"
+    data: Optional[dict] = None

@@ -1,68 +1,69 @@
 # requirements.txt
-# FormFlow 高校轻量级表单与审批平台 - 依赖配置
-# Python 3.10+
+# FormFlow 高校轻量级表单与审批平台 - Python 3.14 适配版
 
 # ========== 核心框架 ==========
-fastapi==0.111.0               # Web框架（升级以兼容新版pydantic）
-uvicorn[standard]==0.30.1      # ASGI服务器
-python-multipart==0.0.9        # 文件上传支持
+fastapi==0.135.1
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
 
 # ========== 数据验证 ==========
-pydantic==2.8.2                # ✅ 升级到2.8.2（兼容zhipuai）
-pydantic-settings==2.3.4       # 配置管理
+pydantic==2.12.5
+pydantic-settings==2.12.0
+email-validator==2.1.1
 
 # ========== 数据库 ==========
-sqlalchemy==2.0.31             # ORM框架
-alembic==1.13.2                # 数据库迁移
-psycopg2-binary==2.9.9         # PostgreSQL驱动
+sqlalchemy==2.0.31
+alembic==1.13.2
+psycopg2-binary==2.9.11
 
 # ========== 缓存 ==========
-redis==5.0.6                   # Redis客户端（已内置异步支持，无需aioredis）
+redis==5.0.6
 
 # ========== 认证与安全 ==========
-python-jose[cryptography]==3.3.0  # JWT
-passlib[bcrypt]==1.7.4            # 密码加密
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt<4.1  # 4.1+ 移除了 __about__，不兼容 passlib
 
 # ========== 定时任务 ==========
-apscheduler==3.10.4            # 定时任务调度
+apscheduler==3.10.4
 
 # ========== 文件存储 ==========
-minio==7.2.7                   # MinIO对象存储
+minio==7.2.7
 
 # ========== 数据导出 ==========
-openpyxl==3.1.5                # Excel读写
-xlsxwriter==3.2.0              # Excel高级导出
+openpyxl==3.1.5
+xlsxwriter==3.2.0
 
-# ========== 二维码 ==========
-qrcode[pil]==7.4.2             # 二维码生成
-pillow==10.4.0                 # 图像处理库
+# ========== 二维码 / 图像 ==========
+qrcode[pil]==7.4.2
+pillow==12.1.1
 
 # ========== AI功能 ==========
-zai-sdk>=0.0.4
+zai-sdk==0.2.2
 
 # ========== HTTP客户端 ==========
-httpx==0.27.0                  # 异步HTTP客户端
+httpx==0.27.0
 
 # ========== 公式计算 ==========
-simpleeval==0.9.13             # 安全的表达式求值
+simpleeval==0.9.13
 
 # ========== 文件类型检测 ==========
-python-magic-bin==0.4.14       # Windows文件类型检测
+python-magic-bin==0.4.14 ; platform_system == "Windows"
 
 # ========== 工具库 ==========
-python-dotenv==1.0.1           # 环境变量管理
-python-dateutil==2.9.0         # 日期时间工具
-pytz==2024.1                   # 时区支持
+python-dotenv==1.0.1
+python-dateutil==2.9.0
+pytz==2024.1
 
 # ========== 日志 ==========
-python-json-logger==2.0.7      # JSON格式日志
+python-json-logger==2.0.7
+
+# ========== PDF ==========
+weasyprint==60.2
 
 # ========== 开发工具（可选）==========
-# pytest==8.2.2                # 单元测试
-# pytest-asyncio==0.23.7       # 异步测试
-# black==24.4.2                # 代码格式化
-# flake8==7.1.0                # 代码检查
-# mypy==1.10.1                 # 类型检查
-# PDF Generation & QR Code
-weasyprint==60.2
-qrcode==7.4.2
+# pytest==8.2.2
+# pytest-asyncio==0.23.7
+# black==24.4.2
+# flake8==7.1.0
+# mypy==1.10.1

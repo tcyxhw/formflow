@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, RootModel, validator
 
 JsonLogicDict = Dict[str, Any]
 NODE_TYPE = Literal["start", "user", "auto", "end"]
@@ -42,18 +42,15 @@ def _validate_jsonlogic(expression: JsonLogicDict) -> JsonLogicDict:
     return expression
 
 
-class JsonLogicExpression(BaseModel):
+class JsonLogicExpression(RootModel[JsonLogicDict]):
     """JsonLogic 表达式封装，用于前后端规则互通。"""
 
-    __root__: JsonLogicDict
+    def __init__(self, **data: Any) -> None:
+        _validate_jsonlogic(data)
+        super().__init__(**data)
 
-    @root_validator(pre=True)
-    def ensure_valid_jsonlogic(cls, values: JsonLogicDict) -> JsonLogicDict:  # type: ignore[override]
-        _validate_jsonlogic(values)
-        return values
-
-    def dict(self, *args: Any, **kwargs: Any) -> JsonLogicDict:  # pragma: no cover - Pydantic hook
-        return super().dict(*args, **kwargs)
+    def dict(self, *args: Any, **kwargs: Any) -> JsonLogicDict:
+        return self.model_dump(*args, **kwargs)
 
 
 class FlowNodeConfig(BaseModel):

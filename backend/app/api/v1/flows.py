@@ -67,7 +67,7 @@ async def get_flow_draft(
 
 @router.put("/{flow_definition_id}/draft", summary="保存流程草稿")
 async def save_flow_draft(
-    request: FlowDraftSaveRequest = Body(..., description="草稿内容"),
+    request: "FlowDraftSaveRequest" = Body(..., description="草稿内容"),
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
     current_user=Depends(RequireAdmin),
     tenant_id: int = Depends(get_current_tenant_id),
@@ -97,7 +97,7 @@ async def save_flow_draft(
 
 @router.post("/{flow_definition_id}/publish", summary="发布流程快照")
 async def publish_flow(
-    request: FlowPublishRequest = Body(..., description="发布参数"),
+    request: "FlowPublishRequest" = Body(..., description="发布参数"),
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
     current_user=Depends(RequireAdmin),
     tenant_id: int = Depends(get_current_tenant_id),

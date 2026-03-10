@@ -25,7 +25,7 @@ router = APIRouter()
 @router.post("", summary="创建提交")
 @audit_log(action="create_submission", resource_type="submission", record_after=True)
 async def create_submission(
-        request: SubmissionCreateRequest = Body(...),
+        request: "SubmissionCreateRequest" = Body(...),
         req: Request = None,
         current_user: dict = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
@@ -65,7 +65,7 @@ async def create_submission(
 @audit_log(action="update_submission", resource_type="submission", record_before=True, record_after=True)
 async def update_submission(
         submission_id: int = Path(...),
-        request: SubmissionUpdateRequest = Body(...),
+        request: "SubmissionUpdateRequest" = Body(...),
         current_user: dict = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -215,7 +215,7 @@ async def list_submissions(
 
 @router.post("/drafts", summary="保存草稿")
 async def save_draft(
-        request: DraftSaveRequest = Body(...),
+        request: "DraftSaveRequest" = Body(...),
         current_user: dict = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -307,7 +307,7 @@ async def get_statistics(
 
 @router.post("/export", summary="导出数据")
 async def export_submissions(
-        request: ExportRequest = Body(...),
+        request: "ExportRequest" = Body(...),
         current_user: dict = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)

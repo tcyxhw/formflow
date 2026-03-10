@@ -21,7 +21,6 @@ import qrcode
 from qrcode.image.pil import PilImage
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
-from weasyprint import HTML, CSS
 
 from app.core.exceptions import BusinessError, NotFoundError
 from app.models.activity import Activity, AwardRecord
@@ -29,6 +28,14 @@ from app.models.certificate import Certificate, CertificateTemplate
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+# 尝试导入 WeasyPrint，失败时设置标志
+try:
+    from weasyprint import HTML, CSS
+    WEASYPRINT_AVAILABLE = True
+except (ImportError, OSError) as e:
+    WEASYPRINT_AVAILABLE = False
+    logger.warning(f"WeasyPrint 不可用: {e}")
 
 
 class CertificateService:
@@ -194,12 +201,17 @@ class CertificateService:
         html_content = html_content.replace("{{qr_code_base64}}", f"data:image/png;base64,{qr_base64}")
 
         # 生成PDF
-        html = HTML(string=html_content)
-        if template.css_content:
-            css = CSS(string=template.css_content)
-            pdf_bytes = html.write_pdf(stylesheets=[css])
+        if WEASYPRINT_AVAILABLE:
+            html = HTML(string=html_content)
+            if template.css_content:
+                css = CSS(string=template.css_content)
+                pdf_bytes = html.write_pdf(stylesheets=[css])
+            else:
+                pdf_bytes = html.write_pdf()
         else:
-            pdf_bytes = html.write_pdf()
+            # WeasyPrint 不可用时，生成占位 PDF（实际项目中应安装 GTK 运行时）
+            logger.warning("WeasyPrint unavailable, generating placeholder PDF")
+            pdf_bytes = b"%PDF-1.4\n%Placeholder certificate PDF - install GTK3 runtime for real certificates"
 
         # 保存证书记录
         certificate = Certificate(

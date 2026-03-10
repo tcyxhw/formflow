@@ -148,7 +148,7 @@ async def release_task(
 @audit_log(action="perform_task_action", resource_type="task")
 async def perform_task_action(
     task_id: int = Path(..., ge=1, description="任务 ID"),
-    request: TaskActionRequest = Body(..., description="审批动作请求"),
+    request: "TaskActionRequest" = Body(..., description="审批动作请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
@@ -168,7 +168,7 @@ async def perform_task_action(
 @audit_log(action="transfer_task", resource_type="task")
 async def transfer_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
-    request: TaskTransferRequest = Body(..., description="转交请求"),
+    request: "TaskTransferRequest" = Body(..., description="转交请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
@@ -183,7 +183,7 @@ async def transfer_task(
 @audit_log(action="delegate_task", resource_type="task")
 async def delegate_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
-    request: TaskDelegateRequest = Body(..., description="委托请求"),
+    request: "TaskDelegateRequest" = Body(..., description="委托请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
@@ -198,7 +198,7 @@ async def delegate_task(
 @audit_log(action="add_sign_task", resource_type="task")
 async def add_sign_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
-    request: TaskAddSignRequest = Body(..., description="加签请求"),
+    request: "TaskAddSignRequest" = Body(..., description="加签请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),

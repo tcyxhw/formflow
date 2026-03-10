@@ -3,12 +3,25 @@
 FastAPI主应用入口
 配置路由、中间件、异常处理等
 """
+import logging
+import sys
+
+# 日志配置必须放在最前面
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+
+print(">>> [1] 日志配置完成", flush=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import logging
 
 from app.config import settings
+
+print(f">>> [2] 配置加载完成, LOG_LEVEL={settings.LOG_LEVEL}", flush=True)
 from app.core.database import init_db, engine
 from app.core.redis_client import redis_client
 from app.api.v1 import router as api_v1_router
@@ -38,32 +51,37 @@ async def lifespan(_app: FastAPI):  # ✅ 改名避免隐藏外部 app
     """
     应用生命周期管理
     """
+    print(">>> [3] lifespan 启动阶段开始", flush=True)
+    
     # ========== 启动时执行 ==========
-    logger.info("FormFlow 应用启动中...")
+    print(">>> [4] FormFlow 应用启动中...", flush=True)
 
     try:
         # 初始化数据库
-        logger.info("初始化数据库...")
+        print(">>> [5] 初始化数据库...", flush=True)
         init_db()
+        print(">>> [6] 数据库初始化完成", flush=True)
 
         # 连接Redis
-        logger.info("连接Redis...")
+        print(">>> [7] 连接Redis...", flush=True)
         await redis_client.connect()
+        print(">>> [8] Redis连接完成", flush=True)
 
         # ✅ 启动定时任务（从 @app.on_event 移到这里）
-        logger.info("启动定时任务...")
+        print(">>> [9] 启动定时任务...", flush=True)
         scheduler.start()
+        print(">>> [10] 定时任务启动完成", flush=True)
 
-        logger.info("FormFlow 应用启动成功！")
+        print(">>> [11] FormFlow 应用启动成功！", flush=True)
 
     except Exception as e:
-        logger.error(f"应用启动失败: {str(e)}")
+        print(f">>> [X] 应用启动失败: {str(e)}", flush=True)
         raise
 
     yield
 
     # ========== 关闭时执行 ==========
-    logger.info("FormFlow 应用关闭中...")
+    print(">>> [12] FormFlow 应用关闭中...", flush=True)
 
     # ✅ 关闭定时任务（从 @app.on_event 移到这里）
     scheduler.shutdown()
@@ -161,11 +179,6 @@ async def health_check():
         "service": settings.PROJECT_NAME
     }
 
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 
 if __name__ == "__main__":
     import uvicorn

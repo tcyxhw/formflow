@@ -6,7 +6,7 @@
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from app.core.database import get_db
 from app.core.response import success_response, paginated_response
 from app.core.exceptions import NotFoundError, ValidationError, AuthorizationError
@@ -489,4 +489,60 @@ async def update_user_profile(
     return success_response(
         data=profile.to_dict(),
         message="扩展信息更新成功"
+    )
+
+
+@router.get("/me/stats", summary="获取当前用户统计信息")
+async def get_current_user_stats(
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取当前用户的统计信息
+
+    返回值:
+    - forms_created: 创建的表单数量
+    - forms_submitted: 填写的表单数量
+    - tasks_pending: 待办审批数量
+    - tasks_completed: 已处理审批数量
+    """
+    from app.models.form import Form, Submission
+    from app.models.workflow import Task
+
+    user_id = current_user.id
+
+    # 创建的表单数量
+    forms_created = db.query(func.count(Form.id)).filter(
+        Form.tenant_id == tenant_id,
+        Form.owner_user_id == user_id
+    ).scalar() or 0
+
+    # 填写的表单数量（提交记录）
+    forms_submitted = db.query(func.count(Submission.id)).filter(
+        Submission.tenant_id == tenant_id,
+        Submission.submitter_id == user_id
+    ).scalar() or 0
+
+    # 待办审批数量（status='open' 或 'claimed'）
+    tasks_pending = db.query(func.count(Task.id)).filter(
+        Task.tenant_id == tenant_id,
+        Task.assignee_user_id == user_id,
+        Task.status.in_(["open", "claimed"])
+    ).scalar() or 0
+
+    # 已处理审批数量（status='completed'）
+    tasks_completed = db.query(func.count(Task.id)).filter(
+        Task.tenant_id == tenant_id,
+        Task.assignee_user_id == user_id,
+        Task.status == "completed"
+    ).scalar() or 0
+
+    return success_response(
+        data={
+            "forms_created": forms_created,
+            "forms_submitted": forms_submitted,
+            "tasks_pending": tasks_pending,
+            "tasks_completed": tasks_completed
+        }
     )

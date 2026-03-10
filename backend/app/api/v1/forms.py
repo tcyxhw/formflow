@@ -187,7 +187,7 @@ async def list_forms(
 @router.post("", summary="创建表单")
 @audit_log(action="create_form", resource_type="form", record_after=True)
 async def create_form(
-        request: FormCreateRequest = Body(...),
+        request: "FormCreateRequest" = Body(...),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -269,7 +269,7 @@ async def get_form_detail(
 @audit_log(action="update_form", resource_type="form", record_before=True, record_after=True)
 async def update_form(
         form_id: int = Path(..., description="表单ID"),
-        request: FormUpdateRequest = Body(...),
+        request: "FormUpdateRequest" = Body(...),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -341,7 +341,7 @@ async def delete_form(
 @router.post("/{form_id}/publish", summary="发布表单")
 @audit_log(action="publish_form", resource_type="form", record_after=True)
 async def publish_form(
-        request: FormPublishRequest = Body(...),
+        request: "FormPublishRequest" = Body(...),
         form_id: int = Path(..., description="表单ID"),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),

@@ -95,7 +95,7 @@ async def get_my_permissions(
 @audit_log(action="create_form_permission", resource_type="form_permission", record_after=True)
 async def create_permission(
     form_id: int = Path(..., ge=1, description="表单 ID"),
-    request: FormPermissionCreateRequest = Body(..., description="权限创建请求"),
+    request: "FormPermissionCreateRequest" = Body(..., description="权限创建请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
@@ -112,7 +112,7 @@ async def create_permission(
 async def update_permission(
     form_id: int = Path(..., ge=1, description="表单 ID"),
     permission_id: int = Path(..., ge=1, description="权限 ID"),
-    request: FormPermissionUpdateRequest = Body(..., description="权限更新请求"),
+    request: "FormPermissionUpdateRequest" = Body(..., description="权限更新请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
