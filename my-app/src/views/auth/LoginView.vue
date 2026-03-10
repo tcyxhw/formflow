@@ -3,49 +3,47 @@
     <div class="auth-viewport">
       <aside class="auth-showcase" aria-hidden="true">
         <div class="showcase-content">
-          <div class="showcase-visual" role="img" aria-label="动效展示">
-            <div class="visual-core">
-              <span>FF</span>
-            </div>
-            <div class="visual-ring ring-primary"></div>
-            <div class="visual-ring ring-secondary"></div>
-            <div class="visual-particle particle-one"></div>
-            <div class="visual-particle particle-two"></div>
-            <div class="visual-particle particle-three"></div>
+          <div class="showcase-visual" role="img" aria-label="AI助手形象">
+            <!-- SVG Character - 可爱极简风格 -->
+            <svg class="character-svg" viewBox="0 0 80 100" fill="none" stroke="currentColor" stroke-width="1.2">
+              <!-- 头部 - 圆润轮廓 -->
+              <ellipse cx="40" cy="26" rx="18" ry="20" class="head-shape" />
+              <!-- 眼睛 - 大眼睛更可爱 -->
+              <g class="character-eyes" :class="{ 'eyes-hidden': passwordFocused }">
+                <circle 
+                  class="eye-left" 
+                  :cx="33 + eyeOffset.leftX" 
+                  :cy="24 + eyeOffset.leftY" 
+                  r="3.5" 
+                  fill="#ff7a18" 
+                />
+                <circle 
+                  class="eye-right" 
+                  :cx="47 + eyeOffset.rightX" 
+                  :cy="24 + eyeOffset.rightY" 
+                  r="3.5" 
+                  fill="#ff7a18" 
+                />
+                <!-- 眼睛高光 -->
+                <circle class="eye-shine" cx="31" cy="22" r="1" fill="white" />
+                <circle class="eye-shine" cx="45" cy="22" r="1" fill="white" />
+              </g>
+              <!-- 身体 - 圆润水滴形 -->
+              <path d="M22 48 Q40 52 58 48 L56 75 Q40 82 24 75 Z" class="body-shape" />
+              <!-- 手臂 - 举起的小手 -->
+              <path d="M22 52 Q10 58 12 70" class="arm-left" />
+              <path d="M58 52 Q70 58 68 70" class="arm-right" />
+              <!-- 手部 - 圆润小球 -->
+              <circle class="hand-left" cx="12" cy="70" r="4" fill="currentColor" />
+              <circle class="hand-right" cx="68" cy="70" r="4" fill="currentColor" />
+            </svg>
+
+            <!-- 密码遮挡遮罩 -->
+            <div class="eye-overlay" :class="{ 'overlay-hidden': !passwordFocused }"></div>
           </div>
           <p class="eyebrow">Quantum Access Deck</p>
-          <div class="dynamic-caption-wrapper">
-            <transition name="spotlight-fade" mode="out-in">
-              <p class="dynamic-caption" :key="activeSpotlightIndex">
-                {{ spotlightMessages[activeSpotlightIndex] }}
-              </p>
-            </transition>
-            <div class="caption-gradient" aria-hidden="true">
-              <div class="gradient-fill" :key="activeSpotlightIndex"></div>
-            </div>
-          </div>
-          <div class="dynamic-chips" role="list">
-            <span
-              class="chip"
-              role="listitem"
-              v-for="(item, index) in motionLabels"
-              :key="`${item}-${index}`"
-            >
-              {{ item }}
-            </span>
-          </div>
-          <div class="spotlight-controls" role="tablist">
-            <button
-              v-for="(item, index) in spotlightMessages"
-              :key="item"
-              class="spotlight-control"
-              type="button"
-              :class="{ active: activeSpotlightIndex === index }"
-              :aria-label="`播放动态文案 ${index + 1}`"
-              :aria-pressed="activeSpotlightIndex === index"
-              role="tab"
-              @click="handleSpotlightDotClick(index)"
-            ></button>
+          <div class="caption-wrapper">
+            <p class="dynamic-caption">{{ captionText }}</p>
           </div>
         </div>
       </aside>
@@ -434,10 +432,13 @@
             </div>
           </div>
         </div>
+      </section>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMessage, useDialog } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
@@ -472,6 +473,35 @@ const showPassword = reactive({
 
 const isLogin = ref(true)
 const loading = ref(false)
+const passwordFocused = ref(false)
+
+// 眼睛视差跟踪
+const eyeOffset = reactive({ leftX: 0, leftY: 0, rightX: 0, rightY: 0 })
+let mouseX = 0
+let mouseY = 0
+let rafId: number | null = null
+
+const MAX_OFFSET = 1.5
+const EYE_LEFT_BASE = { x: 34, y: 20 }
+const EYE_RIGHT_BASE = { x: 46, y: 20 }
+
+function updateEyeParallax() {
+  const viewportCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  const deltaX = (mouseX - viewportCenter.x) / viewportCenter.x
+  const deltaY = (mouseY - viewportCenter.y) / viewportCenter.y
+  
+  eyeOffset.leftX = deltaX * MAX_OFFSET
+  eyeOffset.leftY = deltaY * MAX_OFFSET * 0.5
+  eyeOffset.rightX = deltaX * MAX_OFFSET
+  eyeOffset.rightY = deltaY * MAX_OFFSET * 0.5
+  
+  rafId = requestAnimationFrame(updateEyeParallax)
+}
+
+function onMouseMove(event: MouseEvent) {
+  mouseX = event.clientX
+  mouseY = event.clientY
+}
 
 const loginForm = reactive<LoginForm>({
   phone: '15018816993',
@@ -493,19 +523,11 @@ const spotlightMessages = [
   '悬浮态能量框架，动态提示步骤与完成度的跃迁'
 ]
 
-const motionLabels = [
-  'AURORA LOOP',
-  'LIVE ROUTING',
-  'AI SURGE',
-  'NEBULA INPUT',
-  'QUANTUM SYNC',
-  'MAGNETIC FLOW'
-]
-
-const activeSpotlightIndex = ref(0)
+const captionIndex = ref(0)
 let spotlightTimer: number | null = null
 
-const currentTenantName = computed(() => tenantStore.currentTenant?.name || '未选择')
+// Character caption text with fade effect
+const captionText = ref(spotlightMessages[0])
 
 const resolveErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback
@@ -526,7 +548,8 @@ const goToTenantSelect = () => {
 const startSpotlightRotation = () => {
   if (spotlightTimer !== null || spotlightMessages.length <= 1) return
   spotlightTimer = window.setInterval(() => {
-    activeSpotlightIndex.value = (activeSpotlightIndex.value + 1) % spotlightMessages.length
+    captionIndex.value = (captionIndex.value + 1) % spotlightMessages.length
+    captionText.value = spotlightMessages[captionIndex.value]
   }, 4200)
 }
 
@@ -534,12 +557,6 @@ const stopSpotlightRotation = () => {
   if (spotlightTimer === null) return
   window.clearInterval(spotlightTimer)
   spotlightTimer = null
-}
-
-const handleSpotlightDotClick = (index: number) => {
-  activeSpotlightIndex.value = index
-  stopSpotlightRotation()
-  startSpotlightRotation()
 }
 
 const showMessage = (type: 'success' | 'error' | 'warning' | 'info', content: string) => {
@@ -682,15 +699,25 @@ const handleForgotPassword = () => {
   showMessage('info', '请联系管理员重置密码')
 }
 
+// Watch for password field focus state
+watch(() => showPassword.login, (newVal) => {
+  // If password is shown, eye is blocked
+  passwordFocused.value = !newVal
+})
+
 onMounted(() => {
   if (!tenantStore.hasTenant) {
     router.push('/tenant-select')
   }
   startSpotlightRotation()
+  window.addEventListener('mousemove', onMouseMove)
+  rafId = requestAnimationFrame(updateEyeParallax)
 })
 
 onBeforeUnmount(() => {
   stopSpotlightRotation()
+  window.removeEventListener('mousemove', onMouseMove)
+  if (rafId) cancelAnimationFrame(rafId)
 })
 
 const resetLoginForm = () => {
@@ -720,7 +747,7 @@ const switchTab = (toLogin: boolean) => {
 
 </script>
 
-<style scoped>
+<style>
 .auth-shell {
   --bg: #f5f5f7;
   --panel-bg: #ffffff;
@@ -756,221 +783,166 @@ const switchTab = (toLogin: boolean) => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  /* Diagonal cut background */
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
 }
 
-.auth-showcase::after {
+/* Background gradient for diagonal cut effect */
+.auth-showcase::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 30% 20%, rgba(255, 122, 24, 0.25), transparent 50%),
-    radial-gradient(circle at 80% 60%, rgba(255, 255, 255, 0.12), transparent 60%);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    linear-gradient(160deg, #0b0d12 0%, #0b0d12 80%, #1a1d24 100%);
   pointer-events: none;
+  z-index: 0;
 }
 
 .showcase-content {
   width: min(460px, 88%);
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
   position: relative;
   z-index: 1;
 }
 
 .showcase-visual {
   position: relative;
-  width: 220px;
+  width: 180px;
   height: 220px;
   margin: 0 auto;
-  border-radius: 32px;
-  background: #111217;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.visual-core {
-  width: 110px;
-  height: 110px;
-  background: #ff7a18;
-  border-radius: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 32px;
-  color: #0b0d12;
-  letter-spacing: 0.1em;
+/* SVG Character Styles */
+.character-svg {
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.9);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.5));
 }
 
-.visual-ring {
+.head-shape {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1.5;
+}
+
+.body-shape {
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 1.5;
+}
+
+.arm-left,
+.arm-right {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.character-eyes {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.eyes-hidden {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.eye-left,
+.eye-right {
+  fill: #ff7a18;
+  filter: drop-shadow(0 0 8px rgba(255, 122, 24, 0.9));
+}
+
+.eye-shine {
+  fill: white;
+  opacity: 0.8;
+}
+
+.hand-left,
+.hand-right {
+  fill: rgba(255, 255, 255, 0.7);
+  transform-origin: center;
+}
+
+/* Eye Overlay */
+.eye-overlay {
   position: absolute;
-  border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  animation: ring-spin 18s linear infinite;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 18px;
+  background: rgba(11, 13, 18, 0.95);
+  border-radius: 3px;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 2;
 }
 
-.ring-primary {
-  inset: 12px;
+.overlay-hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
 }
 
-.ring-secondary {
-  inset: -12px;
-  animation-duration: 28s;
+/* Parallax Animation - 悬浮呼吸动画 - 大幅度 */
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-4px, -12px) rotate(-2deg); }
+  40% { transform: translate(4px, -18px) rotate(2deg); }
+  60% { transform: translate(-4px, -12px) rotate(-2deg); }
+  80% { transform: translate(4px, -6px) rotate(1deg); }
 }
 
-.visual-particle {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 122, 24, 0.8));
-  animation: particle-float 6s ease-in-out infinite;
+@keyframes breathe {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
 }
 
-.particle-one {
-  top: 10%;
-  left: 65%;
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
 }
 
-.particle-two {
-  bottom: 12%;
-  right: 18%;
-  animation-delay: 1.8s;
+.character-svg {
+  animation: float 6s ease-in-out infinite, breathe 3s ease-in-out infinite;
 }
 
-.particle-three {
-  top: 30%;
-  left: 18%;
-  animation-delay: 3.2s;
+.character-eyes {
+  animation: blink 4s ease-in-out infinite;
+  transform-origin: center 24px;
 }
 
-@keyframes ring-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes particle-float {
-  0% {
-    transform: translate3d(0, 0, 0);
-    opacity: 0.4;
-  }
-  50% {
-    transform: translate3d(6px, -12px, 0);
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(-8px, 10px, 0);
-    opacity: 0.4;
-  }
-}
-
+/* Eyebrow */
 .eyebrow {
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  font-size: 12px;
-  color: var(--text-3);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
   margin: 0;
+  text-align: left;
+}
+
+/* Caption Styles */
+.caption-wrapper {
+  padding-left: 4px;
 }
 
 .dynamic-caption {
   margin: 0;
-  font-size: 20px;
-  line-height: 1.6;
-  color: #fff;
-}
-
-.dynamic-caption-wrapper {
-  position: relative;
-  padding: 12px 16px;
-  border-radius: 22px;
-  overflow: hidden;
-  background: rgba(11, 13, 18, 0.6);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 30px rgba(0, 0, 0, 0.35);
-}
-
-.caption-gradient {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.55;
-}
-
-.gradient-fill {
-  width: 140%;
-  height: 100%;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.2), rgba(255, 122, 24, 0.3), rgba(255, 255, 255, 0.2));
-  transform: translateX(-110%);
-  animation: caption-gradient-flow 1.1s ease forwards;
-}
-
-@keyframes caption-gradient-flow {
-  0% {
-    transform: translateX(-110%);
-    opacity: 0;
-  }
-  40% {
-    opacity: 0.8;
-  }
-  100% {
-    transform: translateX(15%);
-    opacity: 0;
-  }
-}
-
-.spotlight-fade-enter-active,
-.spotlight-fade-leave-active {
-  transition: opacity 0.55s ease, transform 0.55s ease;
-}
-
-.spotlight-fade-enter-from,
-.spotlight-fade-leave-to {
-  opacity: 0;
-  transform: translateY(10px);
-}
-
-.dynamic-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.chip {
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.spotlight-controls {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.spotlight-control {
-  width: 36px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(118, 138, 163, 0.2);
-  border: none;
-  cursor: pointer;
-  transition: background 0.25s ease, transform 0.25s ease;
-}
-
-.spotlight-control.active {
-  background: linear-gradient(90deg, var(--accent), var(--accent));
-  transform: scaleX(1.08);
+  font-size: 18px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 300;
+  text-align: left;
+  letter-spacing: 0.02em;
 }
 
 .showcase-content h1 {
@@ -996,7 +968,7 @@ const switchTab = (toLogin: boolean) => {
   margin: 0 auto;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 28px;
+  border-radius: 4px;
   padding: clamp(28px, 4vw, 44px);
   box-shadow: 0 40px 90px rgba(12, 16, 32, 0.12);
 }
@@ -1005,7 +977,7 @@ const switchTab = (toLogin: boolean) => {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 18px;
+  padding-bottom: 16px;
   border-bottom: 1px solid rgba(135, 147, 168, 0.2);
   margin-bottom: 32px;
 }
@@ -1031,19 +1003,19 @@ const switchTab = (toLogin: boolean) => {
 }
 
 .change-tenant-btn {
-  padding: 10px 18px;
-  border-radius: 999px;
+  padding: 8px 16px;
+  border-radius: 4px;
   border: 1px solid rgba(15, 18, 23, 0.12);
-  background: #fff;
+  background: transparent;
   color: var(--text-2);
   cursor: pointer;
-  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+  font-size: 13px;
+  transition: all 0.2s ease;
 }
 
 .change-tenant-btn:hover {
-  border-color: var(--accent);
-  background: rgba(255, 122, 24, 0.08);
-  transform: translateY(-1px);
+  border-color: var(--text-2);
+  background: rgba(15, 18, 23, 0.04);
 }
 
 .panel-head {
@@ -1089,35 +1061,35 @@ const switchTab = (toLogin: boolean) => {
 .tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 6px;
-  background: rgba(245, 246, 250, 0.9);
-  border-radius: 18px;
+  gap: 0;
   margin-bottom: 28px;
+  background: rgba(245, 246, 250, 0.9);
+  border-radius: 2px;
   border: 1px solid rgba(15, 18, 23, 0.06);
+  padding: 1px;
 }
 
 .tab {
   position: relative;
-  height: 46px;
+  height: 44px;
   padding: 0 18px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-3);
   background-color: transparent;
   border: none;
-  border-radius: 14px;
+  border-radius: 2px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tab:hover {
-  color: var(--color-text-primary);
-  background-color: var(--color-bg-active);
+  color: var(--text-1);
+  background-color: rgba(15, 18, 23, 0.04);
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
   z-index: var(--z-base);
 }
@@ -1125,7 +1097,7 @@ const switchTab = (toLogin: boolean) => {
 .tab.active {
   color: #fff;
   background: #0b0d12;
-  box-shadow: 0 8px 20px rgba(11, 13, 18, 0.2);
+  box-shadow: none;
 }
 
 .forms-container {
@@ -1142,34 +1114,44 @@ const switchTab = (toLogin: boolean) => {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: 6px;
 }
 
 .form-label {
-  font-size: 13px;
-  line-height: 1.45;
-  font-weight: 600;
-  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--text-3);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .form-input {
   width: 100%;
-  height: 46px;
+  height: 44px;
   padding: 0 14px;
   font-size: 15px;
   line-height: 1.5;
   color: var(--input-text);
   background-color: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: 14px;
+  border: none;
+  border-bottom: 1px solid var(--input-border);
+  border-radius: 2px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   outline: none;
 }
 
 .form-input::placeholder {
-  color: rgba(15, 23, 42, 0.5);
+  color: rgba(15, 23, 42, 0.4);
+}
+
+.form-input:focus {
+  border-bottom-color: var(--accent);
+  box-shadow: 0 2px 0 -1px var(--accent-soft);
+}
+
+.password-input-wrapper {
+  position: relative;
 }
 
 .password-input-wrapper .form-input {
@@ -1181,17 +1163,17 @@ const switchTab = (toLogin: boolean) => {
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   padding: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  color: rgba(15, 23, 42, 0.55);
+  color: var(--text-3);
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: 2px;
   transition: color 0.2s ease, background 0.2s ease;
 }
 
@@ -1201,7 +1183,7 @@ const switchTab = (toLogin: boolean) => {
 }
 
 .password-toggle:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1212,47 +1194,45 @@ const switchTab = (toLogin: boolean) => {
 .checkbox-wrapper {
   display: flex;
   align-items: flex-start;
-  gap: var(--spacing-xs);
+  gap: 10px;
   cursor: pointer;
   user-select: none;
 }
 
 .checkbox {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(255, 255, 255, 0.9);
-  border: 1.5px solid rgba(120, 137, 172, 0.8);
-  border-radius: 6px;
+  background-color: transparent;
+  border: 1px solid var(--text-3);
+  border-radius: 2px;
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 0;
   margin-top: 2px;
-  box-shadow: inset 0 1px 4px rgba(45, 64, 99, 0.15);
 }
 
 .checkbox:hover {
-  border-color: var(--color-primary);
-  background-color: var(--color-primary-light);
+  border-color: var(--accent);
 }
 
 .checkbox:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .checkbox.checked {
-  background: linear-gradient(120deg, #00b7ff, #7c4dff);
-  border-color: transparent;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .check-icon {
-  width: 14px;
-  height: 14px;
-  color: #0b1630;
+  width: 12px;
+  height: 12px;
+  color: #fff;
   animation: checkmark 0.18s ease;
 }
 
@@ -1279,15 +1259,15 @@ const switchTab = (toLogin: boolean) => {
 
 .btn {
   width: 100%;
-  height: 50px;
+  height: 46px;
   padding: 0 22px;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.5;
   font-weight: 600;
   border: none;
-  border-radius: 14px;
+  border-radius: 2px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1297,12 +1277,12 @@ const switchTab = (toLogin: boolean) => {
 .btn-primary {
   color: #fff;
   background: #0b0d12;
-  box-shadow: 0 12px 30px rgba(11, 13, 18, 0.25);
+  box-shadow: 0 8px 24px rgba(11, 13, 18, 0.25);
 }
 
 .btn-primary:hover:not(:disabled) {
   background-color: #1a1d24;
-  box-shadow: 0 6px 18px rgba(11, 13, 18, 0.3);
+  box-shadow: 0 4px 16px rgba(11, 13, 18, 0.3);
   transform: translateY(-1px);
 }
 
@@ -1318,8 +1298,8 @@ const switchTab = (toLogin: boolean) => {
 }
 
 .btn:disabled {
-  background-color: var(--color-bg-active);
-  color: var(--color-text-tertiary);
+  background-color: rgba(15, 18, 23, 0.06);
+  color: var(--text-3);
   cursor: not-allowed;
   box-shadow: none;
   opacity: 0.6;
@@ -1338,20 +1318,20 @@ const switchTab = (toLogin: boolean) => {
 .link {
   font-size: 14px;
   line-height: 1.5;
-  color: var(--accent);
+  color: var(--text-3);
   text-decoration: none;
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
   font-weight: 500;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: all 0.2s ease;
   border-radius: 2px;
 }
 
 .link:hover {
-  color: #0b0d12;
-  text-decoration: underline;
+  color: var(--accent);
+  background-color: var(--accent-soft);
 }
 
 .link:focus-visible {
@@ -1370,114 +1350,92 @@ const switchTab = (toLogin: boolean) => {
   justify-content: center;
   gap: var(--spacing-xs);
   padding-top: var(--spacing-md);
-  border-top: 1px solid var(--color-border-light);
+  border-top: 1px solid rgba(135, 147, 168, 0.2);
 }
 
 .tips-text {
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text-2);
+  color: var(--text-3);
 }
 
 .form-fade-enter-active,
 .form-fade-leave-active {
-  transition: all var(--duration-slow) var(--ease-out);
+  transition: all 0.3s ease;
 }
 
 .form-fade-enter-from {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(6px);
 }
 
 .form-fade-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-6px);
 }
 
 /* ===== 响应式适配 ===== */
 
 /* 移动端 (<768px) */
 @media (max-width: 767px) {
-  .auth-container {
-    padding: var(--spacing-sm);
-  }
-  
-  .auth-card {
-    padding: clamp(20px, 5vw, 24px);
-  }
-  
-  .tenant-info {
+  .auth-shell {
     flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
   }
-  
-  .change-tenant-btn {
-    width: 100%;
+
+  .auth-showcase {
+    flex: 0 0 auto;
+    height: 220px;
   }
-  
-  .logo-icon {
-    width: 56px;
-    height: 56px;
+
+  .form-scroll[data-scroll] {
+    padding: 32px 24px;
+  }
+
+  .panel-inner {
+    padding: clamp(24px, 5vw, 32px);
   }
 }
 
 /* 平板 (768-1024px) */
 @media (min-width: 768px) {
-  .auth-container {
-    padding: var(--spacing-md);
-  }
-  
-  .auth-card {
-    padding: 32px;
+  .panel-inner {
+    padding: 36px;
   }
 }
 
 /* 桌面 (>1024px) */
 @media (min-width: 1024px) {
-  .auth-container {
-    padding: var(--spacing-lg);
-  }
-  
-  .auth-card {
-    padding: 40px;
-  }
-  
-  .auth-card:hover {
-    box-shadow: var(--shadow-strong);
+  .panel-inner {
+    padding: 44px;
   }
 }
 
 /* ===== 高对比度模式支持 ===== */
 @media (prefers-contrast: high) {
-  .auth-container {
-    --color-border-base: #000000;
-    --color-border-strong: #000000;
-  }
-  
   .form-input:focus {
-    outline: 3px solid var(--color-primary);
-    outline-offset: 2px;
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
-  
+
   .btn-primary {
-    border: 2px solid var(--color-primary-active);
+    border: 2px solid var(--accent);
   }
 }
 
 /* ===== 打印样式 ===== */
 @media print {
-  .auth-container {
+  .auth-shell {
     background: white;
   }
-  
-  .auth-card {
+
+  .panel-inner {
     box-shadow: none;
     border: 1px solid #000;
   }
-  
+
   .change-tenant-btn,
-  .password-toggle {
+  .password-toggle,
+  .character-svg {
     display: none;
   }
 }

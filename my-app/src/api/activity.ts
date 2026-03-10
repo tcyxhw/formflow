@@ -182,3 +182,27 @@ export const getStudentCertificates = (studentId: number): Promise<Response<Cert
 export const verifyCertificate = (code: string): Promise<Response<any>> => {
   return request.get(`/api/v1/certificates/verify/${code}`)
 }
+
+// 生成签到码
+export interface CheckinCode {
+  id: number
+  activity_id: number
+  code: string
+  type: 'qrcode' | 'number'
+  status: 'active' | 'expired'
+  valid_from: string
+  valid_to: string
+  used_count: number
+  max_use?: number
+}
+
+export const generateCheckinCode = (
+  activityId: number,
+  type: 'qrcode' | 'number',
+  validHours: number
+): Promise<Response<CheckinCode>> => {
+  return request.post(`/api/v1/activities/${activityId}/generate-checkin-code`, {
+    type,
+    valid_hours: validHours,
+  })
+}
