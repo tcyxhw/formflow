@@ -55,32 +55,10 @@
           <div class="hero-grid">
             <div class="hero-grid__inner">
               <div class="hero-content" ref="spotlightRef">
-                <p class="hero-subtitle">
-                  拖拽设计 + 自然语言生成 + 自动路由。一站式搭建校园流程，P75 保持 LCP ≤ 2.2s、INP ≤ 160ms、CLS ≤ 0.08。
-                </p>
-                <div class="hero-actions">
-                  <n-space :size="16">
-                    <n-button class="cta-primary" type="primary" size="large" @click="handleQuickStart">
-                      开始创建
-                    </n-button>
-                    <n-button class="cta-secondary" size="large" quaternary @click="handleDemo">
-                      观看演示
-                    </n-button>
-                  </n-space>
-                </div>
-                <div class="hero-stats" role="list">
-                  <div class="hero-stat" role="listitem">
-                    <span class="hero-stat__label">AI 自动通过率</span>
-                    <strong class="hero-stat__value">{{ autoDecision.pass }}%</strong>
-                  </div>
-                  <div class="hero-stat" role="listitem">
-                    <span class="hero-stat__label">需人工复核</span>
-                    <strong class="hero-stat__value">{{ autoDecision.manual }}%</strong>
-                  </div>
-                  <div class="hero-stat" role="listitem">
-                    <span class="hero-stat__label">预计处理时长</span>
-                    <strong class="hero-stat__value">{{ etaMinutes }} min</strong>
-                  </div>
+                <div class="hero-text-block">
+                  <h2 class="hero-text__title">氛围亮度自适应</h2>
+                  <p class="hero-text__subtitle">让每一次输入都保持清晰与质感</p>
+                  <p class="hero-text__accent">QUANTUM ACCESS DECK</p>
                 </div>
               </div>
               <div class="hero-terminal">
@@ -634,7 +612,7 @@ const initSpotlight = () => {
   position: relative;
   padding: 12px 14px;
   border: 1px solid rgba(11, 13, 18, 0.1);
-  border-radius: 18px;
+  border-radius: 4px;
   background: #fff;
   font-size: 13px;
   text-align: left;
@@ -732,7 +710,7 @@ const initSpotlight = () => {
   gap: 48px;
   padding: 36px clamp(24px, 5vw, 72px) 60px;
   background: #fff;
-  border-radius: 48px;
+  border-radius: 8px;
   border: 1px solid rgba(15, 18, 23, 0.08);
   box-shadow: 0 50px 140px rgba(12, 16, 32, 0.18);
   max-width: 1360px;
@@ -835,15 +813,42 @@ const initSpotlight = () => {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  position: relative;
+  background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark) 70%, var(--bg-darker) 70%, var(--bg-darker) 100%);
+  padding: 40px;
+  border-radius: 0;
 }
 
-.hero-content::after {
-  content: '';
-  display: block;
-  width: 72px;
-  height: 4px;
-  background: linear-gradient(90deg, #0b0d12, #ff7a18);
-  border-radius: 999px;
+.hero-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hero-text__title {
+  font-size: clamp(24px, 3vw, 28px);
+  color: var(--color-white);
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+  text-align: left;
+}
+
+.hero-text__subtitle {
+  font-size: 14px;
+  color: var(--color-gray-400);
+  font-weight: 400;
+  line-height: 1.5;
+  margin: 0;
+  text-align: left;
+}
+
+.hero-text__accent {
+  font-size: 11px;
+  color: var(--color-gray-300);
+  letter-spacing: 0.3em;
+  margin: 16px 0 0;
+  text-align: left;
 }
 
 .hero-nav {
@@ -855,7 +860,7 @@ const initSpotlight = () => {
 .hero-terminal {
   padding: 32px;
   background: #f8f9fb;
-  border-radius: 28px;
+  border-radius: 8px;
   border: 1px solid rgba(15, 18, 23, 0.06);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   display: flex;
@@ -886,77 +891,45 @@ const initSpotlight = () => {
   color: #ff7a18;
 }
 
-.hero-subtitle {
-  margin: 0;
-  color: #4d5464;
-  font-size: 17px;
-}
-
 .hero-actions :deep(.n-button) {
   min-width: 160px;
   font-weight: 600;
+  border-radius: 4px !important;
 }
-
 
 .hero-actions :deep(.cta-primary) {
   position: relative;
-  border: 0;
+  border: 0 !important;
   color: #fff;
-  background: #0b0d12;
+  background: var(--color-black) !important;
   overflow: hidden;
+  border-radius: 4px !important;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.hero-actions :deep(.cta-primary)::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 122, 24, 0.18);
-  opacity: 0;
-  transition: opacity 0.25s ease;
+.hero-actions :deep(.cta-primary:hover) {
+  background: var(--color-gray-600) !important;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
-.hero-actions :deep(.cta-primary:hover)::after,
-.hero-actions :deep(.cta-primary:focus-visible)::after {
-  opacity: 1;
+.hero-actions :deep(.cta-primary:focus-visible) {
+  background: var(--color-gray-600) !important;
 }
 
 .hero-actions :deep(.cta-secondary) {
-  border: 1.5px solid rgba(11, 13, 18, 0.2);
-  color: #0b0d12;
-  background: transparent;
+  border: 1.5px solid var(--color-gray-100) !important;
+  color: var(--color-black);
+  background: transparent !important;
+  border-radius: 4px !important;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.hero-actions :deep(.cta-secondary:hover) {
+  border-color: var(--color-black) !important;
+  color: var(--color-black);
 }
 
 
-
-.hero-stats {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-top: 12px;
-  border-top: 1px solid rgba(15, 18, 23, 0.08);
-}
-
-
-.hero-stat {
-  flex: 1 1 120px;
-  padding: 14px 16px;
-  border: 1px solid rgba(15, 18, 23, 0.1);
-  background: #f8f9fb;
-  border-radius: 18px;
-}
-
-.hero-stat__label {
-  display: block;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: #6c7282;
-  margin-bottom: 6px;
-}
-
-.hero-stat__value {
-  font-size: 22px;
-  color: #0b0d12;
-}
 
 .hero-terminal {
   gap: 16px;
@@ -1045,7 +1018,7 @@ const initSpotlight = () => {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
   padding: 24px;
-  border-radius: 24px;
+  border-radius: 8px;
 }
 
 .metric-row {
@@ -1092,7 +1065,7 @@ const initSpotlight = () => {
   background: #0b0d12;
   border: none;
   color: #fff;
-  border-radius: 24px;
+  border-radius: 8px;
 }
 
 .copy-shell pre {
@@ -1129,7 +1102,7 @@ const initSpotlight = () => {
   background: #161722;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 28px 70px rgba(0, 0, 0, 0.4);
-  border-radius: 32px;
+  border-radius: 8px;
   color: #fff;
 }
 
@@ -1257,7 +1230,7 @@ const initSpotlight = () => {
 
 .value-card {
   background: #fff;
-  border-radius: 24px;
+  border-radius: 8px;
   padding: 32px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
@@ -1295,7 +1268,7 @@ const initSpotlight = () => {
 .usecase-card {
   background: #fff;
   padding: 28px;
-  border-radius: 20px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   box-shadow: 0 16px 40px rgba(8, 10, 18, 0.08);
   display: flex;
