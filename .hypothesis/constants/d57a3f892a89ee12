@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\condition_evaluator.py
+# hypothesis_version: 6.151.9
+
+['!', '!=', '<', '<=', '==', '>', '>=', 'AND', 'OR', 'and', 'endsWith', 'in', 'or', 'startsWith', 'var']

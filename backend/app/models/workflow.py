@@ -56,6 +56,8 @@ class FlowNode(DBBaseModel):
     auto_reject_cond = Column(JSON, nullable=True, comment="自动驳回条件")
     auto_sample_ratio = Column(Float, default=0, comment="抽检比例")
     next_default_node_id = Column(Integer, nullable=True, comment="默认去向节点ID")
+    reject_strategy = Column(String(20), default="TO_START", comment="驳回策略：TO_START/TO_PREVIOUS")
+    condition_branches = Column(JSON, nullable=True, comment='条件分支配置：{"branches": [...], "default_target_node_id": ...}')
 
     # 关系
     # flow_definition = relationship("FlowDefinition", back_populates="nodes")
@@ -127,6 +129,7 @@ class ProcessInstance(DBBaseModel):
     submission_id = Column(Integer, ForeignKey("submission.id"), nullable=False)
     flow_definition_id = Column(Integer, ForeignKey("flow_definition.id"), nullable=False)
     state = Column(String(20), default="running", comment="状态：running/finished/canceled")
+    form_data_snapshot = Column(JSONB, nullable=True, comment="表单数据快照")
 
     # 关系
     # flow_definition = relationship("FlowDefinition", back_populates="instances")
@@ -155,6 +158,8 @@ class Task(DBBaseModel):
     completed_at = Column(DateTime, nullable=True, comment="完成时间")
     payload_json = Column(JSON, nullable=True, comment="节点表单数据")
     version = Column(Integer, default=1, comment="版本号(乐观锁)")
+    task_type = Column(String(20), default="approve", comment="任务类型：approve/cc")
+    comment = Column(String(500), nullable=True, comment="审批意见")
 
     # 关系 - 修复：移除 back_populates，使用字符串形式的 foreign_keys
     # process_instance = relationship("ProcessInstance", back_populates="tasks")
@@ -182,6 +187,7 @@ class TaskActionLog(DBBaseModel):
         Index("idx_task_created", "task_id", "created_at"),
     )
 
+    tenant_id = Column(Integer, nullable=False, comment="租户ID")
     task_id = Column(Integer, ForeignKey("task.id"), nullable=False)
     actor_user_id = Column(Integer, ForeignKey("user.id"), nullable=False, comment="操作人ID")
     action = Column(String(20), nullable=False, comment="动作")
@@ -211,3 +217,24 @@ class ParallelRuntime(DBBaseModel):
     # 关系
     # process_instance = relationship("ProcessInstance", back_populates="parallel_runtimes")
     # fork_node = relationship("FlowNode")
+
+
+class WorkflowOperationLog(DBBaseModel):
+    """流程操作日志表"""
+    __tablename__ = "workflow_operation_log"
+    __table_args__ = (
+        Index("idx_instance_created", "process_instance_id", "created_at"),
+        Index("idx_operation_type", "operation_type", "created_at"),
+        Index("idx_tenant_created", "tenant_id", "created_at"),
+    )
+
+    tenant_id = Column(Integer, nullable=False, comment="租户ID")
+    process_instance_id = Column(Integer, ForeignKey("process_instance.id"), nullable=False, comment="流程实例ID")
+    operation_type = Column(String(20), nullable=False, comment="操作类型：SUBMIT/APPROVE/REJECT/CANCEL/CC")
+    operator_id = Column(Integer, ForeignKey("user.id"), nullable=False, comment="操作人ID")
+    comment = Column(String(500), nullable=True, comment="操作备注")
+    detail_json = Column(JSONB, nullable=True, comment="操作详情")
+
+    # 关系
+    # process_instance = relationship("ProcessInstance")
+    # operator = relationship("User")

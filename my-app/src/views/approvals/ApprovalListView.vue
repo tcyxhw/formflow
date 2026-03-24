@@ -1,7 +1,7 @@
 <!-- src/views/approvals/ApprovalListView.vue -->
 <template>
   <div class="approval-list-page">
-    <n-page-header title="审批控制台" subtitle="待办优先级与轨迹一览" />
+    <n-page-header title="审批控制台" subtitle="待办任务管理" />
 
     <n-card class="summary-card" title="SLA 概览">
       <template #header-extra>
@@ -125,67 +125,6 @@
       </div>
     </n-card>
 
-    <n-drawer v-model:show="timelineVisible" placement="right" :width="420">
-      <n-drawer-content :title="timelineTitle">
-        <div class="timeline-header">
-          <n-tag size="small" :type="currentTimelineStateTag">
-            {{ currentTimelineStateLabel }}
-          </n-tag>
-          <SlaBadge :level="latestTimelineEntry?.sla_level" :minutes="latestTimelineRemaining" :show-remaining="true" />
-        </div>
-        <n-spin :show="timelineLoading">
-          <n-result v-if="timelineError" status="error" title="轨迹加载失败" :description="timelineError">
-            <template #footer>
-              <n-button size="small" type="primary" :disabled="!lastTimelineTask" @click="handleReloadTimeline">
-                重新加载
-              </n-button>
-            </template>
-          </n-result>
-          <n-empty v-else-if="!timelineEntries.length" description="暂无轨迹记录" />
-          <n-timeline v-else size="large">
-            <n-timeline-item
-              v-for="(entry, idx) in timelineEntries"
-              :key="timelineEntryKey(entry, idx)"
-              :title="entry.node_name || '节点'"
-              :time="formatDate(entry.started_at)"
-              :type="timelineType(entry)"
-            >
-              <div class="timeline-item">
-                <div class="timeline-meta">
-                  <span>状态：{{ statusLabel(entry.status) }}</span>
-                  <span>当前操作：{{ actionLabel(entry.action) }}</span>
-                  <span>执行人：{{ formatActor(entry.actor_user_id, entry.actor_name) }}</span>
-                </div>
-                <div class="timeline-meta">
-                  <span>截止：{{ formatDate(entry.due_at) || '—' }}</span>
-                  <SlaBadge :level="entry.sla_level" :minutes="entry.remaining_sla_minutes" :show-remaining="true" />
-                </div>
-                <p v-if="entry.comment" class="timeline-comment">{{ entry.comment }}</p>
-                <n-collapse v-if="entry.actions?.length">
-                  <n-collapse-item :title="`操作记录 (${entry.actions.length})`" :name="`actions-${idx}`">
-                    <n-timeline size="medium">
-                      <n-timeline-item
-                        v-for="(action, actionIdx) in entry.actions"
-                        :key="`${entry.task_id || entry.node_id}-${actionIdx}`"
-                        :time="formatDate(action.created_at)"
-                        :type="timelineActionType(action)"
-                      >
-                        <div class="timeline-meta">
-                          <span>操作：{{ actionLabel(action.action) }}</span>
-                          <span>执行人：{{ formatActor(action.actor_user_id, action.actor_name) }}</span>
-                        </div>
-                        <p v-if="action.comment" class="timeline-comment">{{ action.comment }}</p>
-                      </n-timeline-item>
-                    </n-timeline>
-                  </n-collapse-item>
-                </n-collapse>
-              </div>
-            </n-timeline-item>
-          </n-timeline>
-        </n-spin>
-      </n-drawer-content>
-    </n-drawer>
-
     <n-modal v-model:show="actionModalVisible" preset="dialog" :title="actionTitle">
       <div class="action-form">
         <n-input
@@ -218,40 +157,158 @@
       </div>
     </n-modal>
 
-    <n-modal v-model:show="delegateModalVisible" preset="dialog" title="任务委托">
-      <div class="action-form">
-        <n-input-number
-          v-model:value="delegateForm.delegate_user_id"
-          placeholder="输入受托人用户 ID"
-          :min="1"
-        />
-        <n-input-number
-          v-model:value="delegateForm.expire_hours"
-          placeholder="委托时长（小时，可选）"
-          :min="1"
-        />
-        <n-input v-model:value="delegateForm.message" placeholder="委托说明（可选）" />
-        <div class="action-buttons">
-          <n-button @click="delegateModalVisible = false">取消</n-button>
-          <n-button type="primary" :loading="delegateLoading" @click="submitDelegate">
-            确认委托
-          </n-button>
+    <n-modal v-model:show="detailModalVisible" preset="card" title="审批详情" style="width: 1000px; max-width: 95vw;">
+      <div v-if="detailTask" class="detail-content">
+        <div class="detail-left">
+          <n-card title="审批信息" size="small" :bordered="false" class="info-card">
+            <n-descriptions label-placement="left" :column="1" bordered size="small">
+              <n-descriptions-item label="流程名称">{{ detailTask.flow_name || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="节点名称">{{ detailTask.node_name || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="提交人">{{ detailTask.submitter_name || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="任务状态">
+                <n-tag :type="statusTagType(detailTask.status, detailTask.is_overdue)" :bordered="false" size="small">{{ statusLabel(detailTask.status, detailTask.is_overdue) }}</n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="流程状态">
+                <n-tag :type="processStateTag(detailTask.process_state, detailTask.is_overdue)" :bordered="false" size="small">{{ formatProcessState(detailTask.process_state, detailTask.is_overdue) }}</n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="截止时间">{{ formatDate(detailTask.due_at) || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="创建时间">{{ formatDate(detailTask.created_at) }}</n-descriptions-item>
+            </n-descriptions>
+          </n-card>
         </div>
-      </div>
-    </n-modal>
+        <div class="detail-right">
+          <n-card title="表单数据" size="small" :bordered="false" class="form-data-card">
+            <n-scrollbar style="max-height: 500px">
+              <div v-if="detailTask?.form_data_snapshot && Object.keys(detailTask.form_data_snapshot).length > 0" class="form-fields">
+                <div
+                  v-for="(item, index) in formattedFormData"
+                  :key="item.key"
+                  class="form-field-item"
+                  :class="{ 'field-alt': index % 2 === 1 }"
+                >
+                  <div class="field-label">
+                    <n-icon size="14" class="field-icon" :depth="2">
+                      <component :is="getFieldIcon(item.type)" />
+                    </n-icon>
+                    <span>{{ item.label }}</span>
+                  </div>
+                  <div class="field-value">
+                    <!-- 图片/附件字段 -->
+                    <template v-if="item.type === 'attachment'">
+                      <div v-if="item.attachments && item.attachments.length > 0" class="attachment-list">
+                        <div
+                          v-for="file in item.attachments"
+                          :key="file.id"
+                          class="attachment-item"
+                        >
+                          <template v-if="isImageFile(file.content_type)">
+                            <div class="image-preview">
+                              <n-image
+                                :src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                                :alt="file.file_name"
+                                width="120"
+                                height="90"
+                                object-fit="cover"
+                                :preview-src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                                fallback-src="/image-placeholder.png"
+                              />
+                              <n-button
+                                text
+                                type="primary"
+                                size="tiny"
+                                class="download-btn"
+                                @click="downloadAttachment(file)"
+                              >
+                                <template #icon>
+                                  <n-icon><DownloadIcon /></n-icon>
+                                </template>
+                                下载
+                              </n-button>
+                            </div>
+                          </template>
+                          <template v-else>
+                            <n-button
+                              text
+                              type="primary"
+                              size="small"
+                              @click="downloadAttachment(file)"
+                            >
+                              <template #icon>
+                                <n-icon><DocumentIcon /></n-icon>
+                              </template>
+                              {{ file.file_name }}
+                              <span class="file-size">({{ formatFileSize(file.size) }})</span>
+                            </n-button>
+                          </template>
+                        </div>
+                      </div>
+                      <span v-else class="empty-value">未上传附件</span>
+                    </template>
 
-    <n-modal v-model:show="addSignModalVisible" preset="dialog" title="添加加签处理人">
-      <div class="action-form">
-        <n-input
-          v-model:value="addSignForm.userIdsInput"
-          placeholder="输入用户 ID，使用逗号分隔"
-        />
-        <n-input v-model:value="addSignForm.message" placeholder="加签说明（可选）" />
-        <div class="action-buttons">
-          <n-button @click="addSignModalVisible = false">取消</n-button>
-          <n-button type="primary" :loading="addSignLoading" @click="submitAddSign">
-            创建加签任务
-          </n-button>
+                    <!-- 日期范围字段 -->
+                    <template v-else-if="item.type === 'date-range'">
+                      <n-tag size="small" type="info" class="date-tag">
+                        <n-icon size="12"><CalendarIcon /></n-icon>
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 日期字段 -->
+                    <template v-else-if="item.type === 'date'">
+                      <n-tag size="small" type="info" class="date-tag">
+                        <n-icon size="12"><CalendarIcon /></n-icon>
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 选项字段 -->
+                    <template v-else-if="item.type === 'select'">
+                      <n-tag size="small" :type="getSelectTagType(item.value)" class="select-tag">
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 多选字段 -->
+                    <template v-else-if="item.type === 'multi-select'">
+                      <n-space size="small" wrap>
+                        <n-tag
+                          v-for="(tag, idx) in item.displayValueArray"
+                          :key="idx"
+                          size="small"
+                          :type="getSelectTagType(tag)"
+                        >
+                          {{ tag }}
+                        </n-tag>
+                      </n-space>
+                    </template>
+
+                    <!-- 数字字段 -->
+                    <template v-else-if="item.type === 'number'">
+                      <span class="number-value">{{ item.displayValue }}</span>
+                    </template>
+
+                    <!-- 布尔字段 -->
+                    <template v-else-if="item.type === 'boolean'">
+                      <n-tag size="small" :type="item.value ? 'success' : 'default'">
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 长文本字段 -->
+                    <template v-else-if="item.type === 'textarea'">
+                      <div class="textarea-value">{{ item.displayValue }}</div>
+                    </template>
+
+                    <!-- 默认文本字段 -->
+                    <template v-else>
+                      <span class="text-value">{{ item.displayValue }}</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <n-empty v-else description="暂无表单数据" size="small" />
+            </n-scrollbar>
+          </n-card>
         </div>
       </div>
     </n-modal>
@@ -262,41 +319,57 @@
 import { computed, h, onMounted, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import type { DataTableColumns } from 'naive-ui'
-import { NButton, NTag, useMessage } from 'naive-ui'
+import { NButton, NTag, useMessage, NIcon, NImage, NSpace } from 'naive-ui'
+import {
+  CalendarOutline as CalendarIcon,
+  DocumentTextOutline as DocumentIcon,
+  DownloadOutline as DownloadIcon,
+  TextOutline as TextIcon,
+  ListOutline as ListIcon,
+  CheckmarkCircleOutline as CheckIcon,
+  ImageOutline as ImageIcon,
+  AttachOutline as AttachIcon,
+  PricetagOutline as TagIcon
+} from '@vicons/ionicons5'
 import SlaBadge from '@/components/common/SlaBadge.vue'
 
 import type {
-  ProcessTimelineResponse,
   TaskActionRequest,
   TaskListQuery,
   TaskResponse,
   TaskSlaSummary,
-  TaskStatus,
-  TimelineAction,
-  TimelineEntry
+  TaskStatus
 } from '@/types/approval'
 import type { SlaLevel } from '@/types/approval'
+import type { AttachmentInfo } from '@/types/attachment'
 
 import {
   claimTask,
-  getProcessTimeline,
   getTaskSlaSummary,
   listGroupTasks,
   listTasks,
-  addSignTask,
-  delegateTask,
   performTaskAction,
   releaseTask,
   transferTask
 } from '@/api/approvals'
 
-import { formatActionLabel, formatActorLabel, timelineActionTag } from '@/utils/audit'
+import { formatActionLabel, formatActorLabel } from '@/utils/audit'
 import { formatProcessState, processStateTag } from '@/utils/sla'
 
 interface PaginationState {
   page: number
   pageSize: number
   total: number
+}
+
+interface FormFieldItem {
+  key: string
+  label: string
+  type: string
+  value: unknown
+  displayValue: string
+  displayValueArray?: string[]
+  attachments?: AttachmentInfo[]
 }
 
 const message = useMessage()
@@ -321,7 +394,7 @@ const groupPagination = reactive<PaginationState>({
 })
 
 const filters = reactive<TaskListQuery>({
-  status: 'open',
+  status: null,
   only_mine: true,
   include_group_tasks: true,
   keyword: '',
@@ -350,32 +423,84 @@ const actionComment = ref('')
 const actionTask = ref<TaskResponse | null>(null)
 const transferModalVisible = ref(false)
 const transferLoading = ref(false)
-const delegateModalVisible = ref(false)
-const delegateLoading = ref(false)
-const addSignModalVisible = ref(false)
-const addSignLoading = ref(false)
-
-const timelineVisible = ref(false)
-const timelineData = ref<ProcessTimelineResponse | null>(null)
-const timelineLoading = ref(false)
-const timelineError = ref<string | null>(null)
-const lastTimelineTask = ref<TaskResponse | null>(null)
+const detailModalVisible = ref(false)
+const detailTask = ref<TaskResponse | null>(null)
 
 const transferForm = reactive({
   target_user_id: null as number | null,
   message: ''
 })
 
-const delegateForm = reactive({
-  delegate_user_id: null as number | null,
-  expire_hours: null as number | null,
-  message: ''
-})
+// 选项值映射表
+const optionValueMap: Record<string, string> = {
+  // 请假类型
+  sick: '病假',
+  personal: '事假',
+  annual: '年假',
+  marriage: '婚假',
+  maternity: '产假',
+  paternity: '陪产假',
+  bereavement: '丧假',
+  other: '其他',
+  // 审批状态
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已驳回',
+  // 优先级
+  high: '高',
+  medium: '中',
+  low: '低',
+  urgent: '紧急',
+  // 是否
+  yes: '是',
+  no: '否',
+  true: '是',
+  false: '否'
+}
 
-const addSignForm = reactive({
-  userIdsInput: '',
-  message: ''
-})
+// 字段标签映射
+const fieldLabelMap: Record<string, string> = {
+  name: '姓名',
+  title: '标题',
+  content: '内容',
+  description: '描述',
+  reason: '原因',
+  department: '部门',
+  email: '邮箱',
+  phone: '电话',
+  address: '地址',
+  date: '日期',
+  time: '时间',
+  amount: '金额',
+  quantity: '数量',
+  status: '状态',
+  type: '类型',
+  category: '分类',
+  remark: '备注',
+  comment: '意见',
+  applicant: '申请人',
+  approver: '审批人',
+  start_date: '开始日期',
+  end_date: '结束日期',
+  create_time: '创建时间',
+  update_time: '更新时间',
+  student_name: '学生姓名',
+  student_id: '学号',
+  days: '请假天数',
+  advisor: '指导老师',
+  thesis_title: '论文题目',
+  thesis_type: '论文类型',
+  abstract: '摘要',
+  word_count: '字数',
+  major: '专业',
+  preferred_date: '期望日期',
+  attachment: '附件',
+  proof: '证明材料',
+  leave_type: '请假类型',
+  startDate: '开始日期',
+  endDate: '结束日期',
+  leaveDays: '请假天数'
+}
 
 interface SummaryMetric {
   key: string
@@ -391,8 +516,7 @@ const summaryMetrics = computed<SummaryMetric[]>(() => {
     { key: 'normal', label: '正常', value: summary?.normal ?? 0, level: 'normal' },
     { key: 'warning', label: '预警', value: summary?.warning ?? 0, level: 'warning' },
     { key: 'critical', label: '紧急', value: summary?.critical ?? 0, level: 'critical' },
-    { key: 'expired', label: '已超时', value: summary?.expired ?? 0, level: 'expired' },
-    { key: 'unknown', label: '无截止', value: summary?.unknown ?? 0, level: 'unknown' }
+    { key: 'expired', label: '已超时', value: summary?.expired ?? 0, level: 'expired' }
   ]
 })
 
@@ -402,679 +526,183 @@ const actionTitle = computed(() =>
   actionIntent.value === 'approve' ? '通过审批' : '驳回审批'
 )
 
-const timelineTitle = computed(() =>
-  timelineData.value ? `流程轨迹 - #${timelineData.value.process_instance_id}` : '流程轨迹'
-)
-
-const timelineEntries = computed<TimelineEntry[]>(() => timelineData.value?.entries || [])
-
-const latestTimelineEntry = computed(() => {
-  const list = timelineEntries.value
-  if (!list.length) return null
-  return list[list.length - 1]
+// 格式化表单数据
+const formattedFormData = computed<FormFieldItem[]>(() => {
+  if (!detailTask.value?.form_data_snapshot) return []
+  
+  const snapshot = detailTask.value.form_data_snapshot
+  return Object.entries(snapshot).map(([key, value]) => {
+    const type = detectFieldType(key, value)
+    const label = getFieldLabel(key)
+    const { displayValue, displayValueArray, attachments } = formatValueByType(value, type, key)
+    
+    return {
+      key,
+      label,
+      type,
+      value,
+      displayValue,
+      displayValueArray,
+      attachments
+    }
+  })
 })
 
-const latestTimelineRemaining = computed(() => latestTimelineEntry.value?.remaining_sla_minutes ?? null)
-
-const currentTimelineStateLabel = computed(() =>
-  formatProcessState(timelineData.value?.state || lastTimelineTask.value?.process_state)
-)
-
-const currentTimelineStateTag = computed(() =>
-  processStateTag(timelineData.value?.state || lastTimelineTask.value?.process_state)
-)
-
-function timelineEntryKey(entry: { task_id?: number | null; node_id?: number | null }, index: number) {
-  if (entry.task_id !== null && entry.task_id !== undefined) {
-    return `task-${entry.task_id}`
+// 检测字段类型
+function detectFieldType(key: string, value: unknown): string {
+  const keyLower = key.toLowerCase()
+  
+  // 附件字段
+  if (keyLower.includes('attachment') || keyLower.includes('proof') || keyLower.includes('file')) {
+    return 'attachment'
   }
-  if (entry.node_id !== null && entry.node_id !== undefined) {
-    return `node-${entry.node_id}-${index}`
+  
+  // 日期范围
+  if (keyLower.includes('range') || (Array.isArray(value) && value.length === 2 && isTimestamp(value[0]))) {
+    return 'date-range'
   }
-  return `timeline-${index}`
+  
+  // 日期字段
+  if (keyLower.includes('date') || keyLower.includes('time')) {
+    return 'date'
+  }
+  
+  // 布尔字段
+  if (typeof value === 'boolean') {
+    return 'boolean'
+  }
+  
+  // 数字字段
+  if (typeof value === 'number' && !isTimestamp(value)) {
+    return 'number'
+  }
+  
+  // 多选字段（数组但不是附件）
+  if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string') {
+    return 'multi-select'
+  }
+  
+  // 选项字段
+  if (typeof value === 'string' && (optionValueMap[value] || ['sick', 'personal', 'annual', 'pending', 'approved', 'high', 'medium', 'low'].includes(value))) {
+    return 'select'
+  }
+  
+  // 长文本
+  if (typeof value === 'string' && value.length > 50) {
+    return 'textarea'
+  }
+  
+  return 'text'
 }
 
-const columns = computed<DataTableColumns<TaskResponse>>(() => {
-  return [
-    {
-      title: '节点/流程',
-      key: 'node_name',
-      render: (row) =>
-        h('div', { class: 'cell-title' }, [
-          h('div', row.node_name || '未命名节点'),
-          h('small', { class: 'cell-desc' }, row.flow_name || '—')
-        ])
-    },
-    {
-      title: '流程状态',
-      key: 'process_state',
-      width: 130,
-      render: (row) =>
-        h(
-          NTag,
-          { type: processStateTag(row.process_state), bordered: false },
-          { default: () => formatProcessState(row.process_state) }
-        )
-    },
-    {
-      title: '任务状态',
-      key: 'status',
-      width: 120,
-      render: (row) =>
-        h(
-          NTag,
-          { type: statusTagType(row.status), bordered: false },
-          { default: () => statusLabel(row.status) }
-        )
-    },
-    {
-      title: '截止时间',
-      key: 'due_at',
-      width: 160,
-      render: (row) => formatDate(row.due_at) || '—'
-    },
-    {
-      title: '剩余 SLA',
-      key: 'remaining_sla_minutes',
-      width: 180,
-      render: (row) =>
-        h(
-          SlaBadge,
-          {
-            level: row.sla_level,
-            minutes: row.remaining_sla_minutes,
-            showRemaining: true
-          }
-        )
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 260,
-      render: (row) =>
-        h('div', { class: 'table-actions' }, [
-          h(
-            NButton,
-            { size: 'small', tertiary: true, onClick: () => openTimeline(row) },
-            { default: () => '轨迹' }
-          ),
-          row.status === 'open'
-            ? h(
-                NButton,
-                { size: 'small', onClick: () => handleClaim(row) },
-                { default: () => '认领' }
-              )
-            : null,
-          row.status === 'claimed' && row.claimed_by
-            ? h(
-                NButton,
-                { size: 'small', tertiary: true, onClick: () => handleRelease(row) },
-                { default: () => '释放' }
-              )
-            : null,
-          row.status !== 'completed'
-            ? h(
-                NButton,
-                {
-                  size: 'small',
-                  type: 'primary',
-                  onClick: () => openActionModal(row, 'approve')
-                },
-                { default: () => '通过' }
-              )
-            : null,
-          row.status !== 'completed'
-            ? h(
-                NButton,
-                {
-                  size: 'small',
-                  type: 'error',
-                  ghost: true,
-                  onClick: () => openActionModal(row, 'reject')
-                },
-                { default: () => '驳回' }
-              )
-            : null,
-          row.status !== 'completed'
-            ? h(
-                NButton,
-                {
-                  size: 'small',
-                  tertiary: true,
-                  onClick: () => openTransferModal(row)
-                },
-                { default: () => '转交' }
-              )
-            : null,
-          row.status !== 'completed'
-            ? h(
-                NButton,
-                {
-                  size: 'small',
-                  tertiary: true,
-                  onClick: () => openDelegateModal(row)
-                },
-                { default: () => '委托' }
-              )
-            : null,
-          row.status !== 'completed'
-            ? h(
-                NButton,
-                {
-                  size: 'small',
-                  tertiary: true,
-                  onClick: () => openAddSignModal(row)
-                },
-                { default: () => '加签' }
-              )
-            : null
-        ])
-    }
-  ]
-})
+// 判断是否为时间戳
+function isTimestamp(value: unknown): boolean {
+  if (typeof value !== 'number') return false
+  // 时间戳通常在 2000-2030 年之间
+  const minTimestamp = 946656000000 // 2000-01-01
+  const maxTimestamp = 1893456000000 // 2030-01-01
+  return value >= minTimestamp && value <= maxTimestamp
+}
 
-const groupColumns = computed<DataTableColumns<TaskResponse>>(() => {
-  return [
-    {
-      title: '节点/流程',
-      key: 'node_name',
-      render: (row) =>
-        h('div', { class: 'cell-title' }, [
-          h('div', row.node_name || '未命名节点'),
-          h('small', { class: 'cell-desc' }, row.flow_name || '—')
-        ])
-    },
-    {
-      title: '截止时间',
-      key: 'due_at',
-      width: 160,
-      render: (row) => formatDate(row.due_at) || '—'
-    },
-    {
-      title: 'SLA(小时)',
-      key: 'sla_hours',
-      width: 100,
-      render: (row) => row.sla_hours ?? '—'
-    },
-    {
-      title: '操作',
-      key: 'group_actions',
-      width: 200,
-      render: (row) =>
-        h('div', { class: 'table-actions' }, [
-          h(
-            NButton,
-            { size: 'small', tertiary: true, onClick: () => openTimeline(row) },
-            { default: () => '轨迹' }
-          ),
-          h(
-            NButton,
-            { size: 'small', type: 'primary', onClick: () => handleClaim(row) },
-            { default: () => '认领' }
-          )
-        ])
-    }
-  ]
-})
+// 获取字段标签
+function getFieldLabel(key: string): string {
+  // 直接匹配
+  if (fieldLabelMap[key]) return fieldLabelMap[key]
+  
+  // 小写匹配
+  const keyLower = key.toLowerCase()
+  for (const [k, v] of Object.entries(fieldLabelMap)) {
+    if (keyLower === k.toLowerCase()) return v
+  }
+  
+  // 包含匹配
+  for (const [k, v] of Object.entries(fieldLabelMap)) {
+    if (keyLower.includes(k.toLowerCase())) return v
+  }
+  
+  return key
+}
 
-function statusTagType(status: TaskStatus) {
-  switch (status) {
-    case 'open':
-      return 'warning'
-    case 'claimed':
-      return 'info'
-    case 'completed':
-      return 'success'
-    case 'canceled':
-      return 'default'
+// 根据类型格式化值
+function formatValueByType(value: unknown, type: string, key: string): { 
+  displayValue: string
+  displayValueArray?: string[]
+  attachments?: AttachmentInfo[]
+} {
+  if (value === null || value === undefined) {
+    return { displayValue: '—' }
+  }
+  
+  switch (type) {
+    case 'date':
+      return { displayValue: formatTimestamp(value) }
+    
+    case 'date-range':
+      if (Array.isArray(value) && value.length === 2) {
+        const start = formatTimestamp(value[0])
+        const end = formatTimestamp(value[1])
+        return { displayValue: `${start} 至 ${end}` }
+      }
+      return { displayValue: String(value) }
+    
+    case 'select':
+      if (typeof value === 'string') {
+        return { displayValue: optionValueMap[value] || value }
+      }
+      return { displayValue: String(value) }
+    
+    case 'multi-select':
+      if (Array.isArray(value)) {
+        const mapped = value.map(v => optionValueMap[String(v)] || String(v))
+        return { 
+          displayValue: mapped.join('、'),
+          displayValueArray: mapped
+        }
+      }
+      return { displayValue: String(value) }
+    
+    case 'boolean':
+      return { displayValue: value ? '是' : '否' }
+    
+    case 'attachment':
+      // 处理附件ID数组
+      if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'number') {
+        // 这里需要从后端获取附件信息，暂时显示为ID列表
+        return { 
+          displayValue: `${value.length} 个附件`,
+          attachments: value.map(id => ({
+            id,
+            file_name: `附件 ${id}`,
+            content_type: 'application/octet-stream',
+            size: 0,
+            download_url: `/api/v1/attachments/${id}/download`
+          }))
+        }
+      }
+      return { displayValue: '无附件' }
+    
+    case 'number':
+      return { displayValue: String(value) }
+    
+    case 'textarea':
+    case 'text':
     default:
-      return 'default'
+      if (typeof value === 'string') {
+        return { displayValue: value || '—' }
+      }
+      if (Array.isArray(value)) {
+        return { displayValue: value.join('、') }
+      }
+      if (typeof value === 'object') {
+        return { displayValue: JSON.stringify(value) }
+      }
+      return { displayValue: String(value) }
   }
 }
 
-function statusLabel(status?: TaskStatus | null) {
-  const map: Record<string, string> = {
-    open: '待认领',
-    claimed: '处理中',
-    completed: '已完成',
-    canceled: '已取消'
-  }
-  return status ? map[status] : '—'
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return ''
-  return dayjs(value).format('YYYY-MM-DD HH:mm')
-}
-
-function timelineType(entry: { status?: TaskStatus | null }) {
-  if (!entry.status) return 'default'
-  if (entry.status === 'completed') return 'success'
-  if (entry.status === 'canceled') return 'warning'
-  return 'info'
-}
-
-function actionLabel(action?: string | null) {
-  return formatActionLabel(action, '—')
-}
-
-function formatActor(userId?: number | null, actorName?: string | null) {
-  return formatActorLabel(userId, actorName)
-}
-
-function timelineActionType(action: TimelineAction): 'default' | 'success' | 'error' | 'info' | 'warning' {
-  return timelineActionTag(action.action)
-}
-
-async function fetchTasks() {
-  loading.value = true
-  try {
-    const params: TaskListQuery = {
-      ...filters,
-      page: pagination.page,
-      page_size: pagination.pageSize,
-      keyword: filters.keyword || undefined,
-      sla_level: filters.sla_level || undefined
-    }
-    const response = await listTasks(params)
-    if (response.data) {
-      tasks.value = response.data.items
-      pagination.total = response.data.total
-    }
-  } catch (error) {
-    console.error(error)
-    message.error('加载任务失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function fetchGroupTasks() {
-  if (!filters.include_group_tasks) {
-    groupTasks.value = []
-    groupPagination.total = 0
-    return
-  }
-  groupLoading.value = true
-  try {
-    const response = await listGroupTasks({
-      page: groupPagination.page,
-      page_size: groupPagination.pageSize
-    })
-    if (response.data) {
-      groupTasks.value = response.data.items
-      groupPagination.total = response.data.total
-    }
-  } catch (error) {
-    console.error(error)
-    message.error('加载小组任务失败')
-  } finally {
-    groupLoading.value = false
-  }
-}
-
-function handlePageChange(page: number) {
-  pagination.page = page
-  fetchTasks()
-}
-
-function handlePageSizeChange(size: number) {
-  pagination.pageSize = size
-  pagination.page = 1
-  fetchTasks()
-}
-
-function handleSearch() {
-  pagination.page = 1
-  refreshTasksAndSummary()
-}
-
-function handleGroupPageChange(page: number) {
-  groupPagination.page = page
-  fetchGroupTasks()
-}
-
-function handleGroupPageSizeChange(size: number) {
-  groupPagination.pageSize = size
-  groupPagination.page = 1
-  fetchGroupTasks()
-}
-
-function handleReset() {
-  filters.keyword = ''
-  filters.status = null
-  filters.only_mine = true
-  filters.include_group_tasks = true
-  pagination.page = 1
-  pagination.pageSize = 10
-  refreshTasksAndSummary()
-  fetchGroupTasks()
-}
-
-function handleImmediateFilter() {
-  pagination.page = 1
-  refreshTasksAndSummary()
-  fetchGroupTasks()
-}
-
-async function refreshTasksAndSummary() {
-  await Promise.all([fetchTasks(), fetchSlaSummary()])
-}
-
-async function fetchSlaSummary() {
-  summaryLoading.value = true
-  try {
-    const params: TaskListQuery = {
-      status: filters.status || undefined,
-      only_mine: filters.only_mine,
-      include_group_tasks: filters.include_group_tasks,
-      keyword: filters.keyword || undefined,
-      sla_level: filters.sla_level || undefined
-    }
-    const response = await getTaskSlaSummary(params)
-    slaSummary.value = response.data ?? null
-  } catch (error) {
-    console.error(error)
-    message.error('加载 SLA 汇总失败')
-    slaSummary.value = null
-  } finally {
-    summaryLoading.value = false
-  }
-}
-
-async function handleClaim(row: TaskResponse) {
-  try {
-    await claimTask(row.id)
-    message.success('任务认领成功')
-    refreshTasksAndSummary()
-    fetchGroupTasks()
-  } catch (error) {
-    console.error(error)
-    message.error('认领失败')
-  }
-}
-
-async function handleRelease(row: TaskResponse) {
-  try {
-    await releaseTask(row.id)
-    message.success('任务已释放')
-    refreshTasksAndSummary()
-    fetchGroupTasks()
-  } catch (error) {
-    console.error(error)
-    message.error('释放失败')
-  }
-}
-
-function openActionModal(row: TaskResponse, intent: 'approve' | 'reject') {
-  actionTask.value = row
-  actionIntent.value = intent
-  actionComment.value = ''
-  actionModalVisible.value = true
-}
-
-function openTransferModal(row: TaskResponse) {
-  if (row.status === 'completed') {
-    message.warning('已完成任务无法转交')
-    return
-  }
-  actionTask.value = row
-  transferForm.target_user_id = null
-  transferForm.message = ''
-  transferModalVisible.value = true
-}
-
-function openDelegateModal(row: TaskResponse) {
-  if (row.status === 'completed') {
-    message.warning('已完成任务无法委托')
-    return
-  }
-  actionTask.value = row
-  delegateForm.delegate_user_id = null
-  delegateForm.expire_hours = null
-  delegateForm.message = ''
-  delegateModalVisible.value = true
-}
-
-function openAddSignModal(row: TaskResponse) {
-  if (row.status === 'completed') {
-    message.warning('已完成任务无需加签')
-    return
-  }
-  actionTask.value = row
-  addSignForm.userIdsInput = ''
-  addSignForm.message = ''
-  addSignModalVisible.value = true
-}
-
-async function submitAction() {
-  if (!actionTask.value) return
-  actionLoading.value = true
-  try {
-    const payload: TaskActionRequest = {
-      action: actionIntent.value,
-      comment: actionComment.value
-    }
-    await performTaskAction(actionTask.value.id, payload)
-    message.success('操作成功')
-    actionModalVisible.value = false
-    refreshTasksAndSummary()
-  } catch (error) {
-    console.error(error)
-    message.error('操作失败')
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-async function submitTransfer() {
-  if (!actionTask.value || !transferForm.target_user_id) {
-    message.warning('请先输入目标用户 ID')
-    return
-  }
-  transferLoading.value = true
-  try {
-    await transferTask(actionTask.value.id, {
-      target_user_id: transferForm.target_user_id,
-      message: transferForm.message || undefined
-    })
-    message.success('任务已转交')
-    transferModalVisible.value = false
-    refreshTasksAndSummary()
-  } catch (error) {
-    console.error(error)
-    message.error('转交失败')
-  } finally {
-    transferLoading.value = false
-  }
-}
-
-async function submitDelegate() {
-  if (!actionTask.value || !delegateForm.delegate_user_id) {
-    message.warning('请先输入受托人 ID')
-    return
-  }
-  delegateLoading.value = true
-  try {
-    await delegateTask(actionTask.value.id, {
-      delegate_user_id: delegateForm.delegate_user_id,
-      expire_hours: delegateForm.expire_hours || undefined,
-      message: delegateForm.message || undefined
-    })
-    message.success('已创建委托任务')
-    delegateModalVisible.value = false
-    refreshTasksAndSummary()
-  } catch (error) {
-    console.error(error)
-    message.error('委托失败')
-  } finally {
-    delegateLoading.value = false
-  }
-}
-
-async function submitAddSign() {
-  if (!actionTask.value) {
-    message.warning('请选择任务')
-    return
-  }
-  const userIds = addSignForm.userIdsInput
-    .split(',')
-    .map((id) => Number(id.trim()))
-    .filter((id) => !Number.isNaN(id) && id > 0)
-  if (!userIds.length) {
-    message.warning('请至少输入一个合法的用户 ID')
-    return
-  }
-  addSignLoading.value = true
-  try {
-    await addSignTask(actionTask.value.id, {
-      user_ids: userIds,
-      message: addSignForm.message || undefined
-    })
-    message.success('加签任务已创建')
-    addSignModalVisible.value = false
-    refreshTasksAndSummary()
-  } catch (error) {
-    console.error(error)
-    message.error('加签失败')
-  } finally {
-    addSignLoading.value = false
-  }
-}
-
-async function openTimeline(row: TaskResponse) {
-  lastTimelineTask.value = row
-  timelineVisible.value = true
-  timelineData.value = null
-  timelineError.value = null
-  timelineLoading.value = true
-  try {
-    const response = await getProcessTimeline(row.process_instance_id)
-    if (response.code === 200 && response.data) {
-      timelineData.value = response.data
-    } else {
-      timelineError.value = response.message || '获取轨迹失败'
-    }
-  } catch (error) {
-    console.error(error)
-    timelineError.value = '获取轨迹失败'
-  } finally {
-    timelineLoading.value = false
-  }
-}
-
-function handleReloadTimeline() {
-  if (lastTimelineTask.value) {
-    openTimeline(lastTimelineTask.value)
-  }
-}
-
-onMounted(() => {
-  refreshTasksAndSummary()
-  fetchGroupTasks()
-})
-</script>
-
-<style scoped>
-.approval-list-page {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.filters-card,
-.table-card {
-  border-radius: 12px;
-}
-
-.summary-card {
-  border-radius: 12px;
-}
-
-.summary-hint {
-  font-size: 12px;
-  color: var(--text-color-3);
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-}
-
-.summary-item {
-  padding: 12px;
-  border-radius: 10px;
-  background-color: var(--card-color);
-  border: 1px solid var(--divider-color);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  color: var(--text-color-2);
-}
-
-.summary-value {
-  font-size: 26px;
-  font-weight: 600;
-  color: var(--text-color-1);
-}
-
-.group-hint {
-  font-size: 13px;
-  color: var(--text-color-3);
-}
-
-.status-select {
-  width: 160px;
-}
-
-.table-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.table-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.cell-title {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cell-desc {
-  color: var(--text-color-3);
-}
-
-.timeline-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--text-color-2);
-}
-
-.action-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-</style>
+// 格式化时间戳
+function formatTimestamp(value: unknown): string {
+  if (!value) return '—'
+  
+  let timestamp: number
+  if (typeof value === 'number') {

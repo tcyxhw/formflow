@@ -71,15 +71,27 @@ class NotFoundError(BaseError):
         )
 
 
+class ConflictError(BaseError):
+    """资源冲突（如重复数据）"""
+
+    def __init__(self, message: str = "资源冲突", data: Optional[Any] = None):
+        super().__init__(
+            code=4091,
+            message=message,
+            data=data,
+            status_code=status.HTTP_409_CONFLICT
+        )
+
+
 class BusinessError(BaseError):
     """业务错误"""
 
-    def __init__(self, message: str = "业务处理失败", data: Optional[Any] = None):
+    def __init__(self, message: str = "业务处理失败", data: Optional[Any] = None, status_code: int = status.HTTP_400_BAD_REQUEST):
         super().__init__(
             code=5001,
             message=message,
             data=data,
-            status_code=status.HTTP_400_BAD_REQUEST
+            status_code=status_code
         )
 
 
@@ -132,6 +144,7 @@ ERROR_CODES = {
     4041: "资源不存在",
     4042: "用户不存在",
     4043: "表单不存在",
+    4091: "资源冲突",
     4291: "请求过于频繁",
 
     # 5xxx 服务端错误

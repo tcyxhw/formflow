@@ -50,7 +50,7 @@ class FormService:
         form = Form(
             tenant_id=tenant_id,
             name=request.name,
-            category=request.category,
+            category_id=request.category_id,
             access_mode=request.access_mode.value,
             owner_user_id=user_id,
             status=FormStatus.DRAFT.value,
@@ -106,8 +106,8 @@ class FormService:
         # 更新基础信息
         if request.name is not None:
             form.name = request.name
-        if request.category is not None:
-            form.category = request.category
+        if request.category_id is not None:
+            form.category_id = request.category_id
         if request.access_mode is not None:
             form.access_mode = request.access_mode.value
         if request.submit_deadline is not None:
@@ -326,16 +326,21 @@ class FormService:
             form_id: int,
             tenant_id: int,
             user_id: int,
-            db: Session
+            db: Session,
+            cascade: bool = False
     ) -> bool:
         """
-        删除表单（软删除，只能删除草稿状态的表单）
+        删除表单（允许删除所有状态的表单）
+
+        注意：此方法允许删除任何状态的表单（包括已发布的表单）。
+        删除操作会同时删除关联的表单版本和流程定义（如果 cascade=True）。
 
         Args:
             form_id: 表单ID
             tenant_id: 租户ID
             user_id: 当前用户ID
             db: 数据库会话
+            cascade: 是否级联删除关联的流程定义
 
         Returns:
             是否删除成功
@@ -345,19 +350,23 @@ class FormService:
         if form.owner_user_id != user_id:
             raise AuthorizationError("只有创建者可以删除表单")
 
-        if form.status != FormStatus.DRAFT.value:
-            raise BusinessError("只能删除草稿状态的表单，已发布的表单请归档")
-
         # 删除关联的版本
         db.query(FormVersion).filter(
             FormVersion.form_id == form_id
         ).delete()
 
+        # 如果级联删除，删除关联的流程定义
+        if cascade and form.flow_definition_id:
+            from app.models.workflow import FlowDefinition
+            db.query(FlowDefinition).filter(
+                FlowDefinition.id == form.flow_definition_id
+            ).delete()
+
         # 删除表单
         db.delete(form)
         db.commit()
 
-        logger.info(f"Deleted form: id={form_id}, tenant={tenant_id}")
+        logger.info(f"Deleted form: id={form_id}, tenant={tenant_id}, status={form.status}")
         return True
 
     @staticmethod
@@ -433,7 +442,12 @@ class FormService:
             db: Session = None
     ) -> Tuple[List[Form], int]:
         """
-        查询表单列表
+        查询表单列表（带权限过滤）
+
+        权限规则：
+        1. 管理员可以看到所有表单
+        2. 表单创建者可以看到自己创建的所有表单
+        3. 普通用户只能看到自己创建的表单或拥有全部权限（view/fill/edit/export/manage）的表单
 
         Args:
             request: 查询请求
@@ -444,6 +458,9 @@ class FormService:
         Returns:
             (表单列表, 总数)
         """
+        from app.services.form_permission_service import FormPermissionService
+        from app.models.form import FormPermission
+
         query = db.query(Form).filter(Form.tenant_id == tenant_id)
 
         # 关键词搜索
@@ -467,28 +484,90 @@ class FormService:
         if request.owner_user_id:
             query = query.filter(Form.owner_user_id == request.owner_user_id)
 
-        # 先统计总数（使用 func.count 避免子查询问题）
-        total = db.query(func.count(Form.id)).filter(Form.tenant_id == tenant_id).scalar()
+        # 权限过滤
+        if user_id:
+            # 检查是否是管理员
+            is_admin = FormPermissionService._is_admin(user_id, tenant_id, db)
 
-        # 重新应用筛选条件
-        query = db.query(Form).filter(Form.tenant_id == tenant_id)
+            if not is_admin:
+                # 非管理员只能看到：
+                # 1. 自己创建的表单
+                # 2. 拥有全部权限的表单
+                now = datetime.utcnow()
 
-        if request.keyword:
-            query = query.filter(
-                or_(
-                    Form.name.ilike(f"%{request.keyword}%"),
-                    Form.category.ilike(f"%{request.keyword}%")
-                )
-            )
+                # 获取用户拥有全部权限的表单ID
+                all_permissions = ['view', 'fill', 'edit', 'export', 'manage']
 
-        if request.category:
-            query = query.filter(Form.category == request.category)
+                # 获取用户角色ID和岗位ID
+                role_ids = FormPermissionService._get_user_role_ids(user_id, tenant_id, db)
+                position_ids = FormPermissionService._get_user_position_ids(user_id, tenant_id, db)
 
-        if request.status:
-            query = query.filter(Form.status == request.status.value)
+                from app.models.user import User
+                user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
+                department_id = user.department_id if user else None
 
-        if request.owner_user_id:
-            query = query.filter(Form.owner_user_id == request.owner_user_id)
+                # 获取用户被授权的表单ID（所有5种权限都有的表单）
+                authorized_form_ids = []
+                all_forms = db.query(Form).filter(Form.tenant_id == tenant_id).all()
+
+                for form in all_forms:
+                    # 跳过自己创建的表单
+                    if form.owner_user_id == user_id:
+                        continue
+
+                    # 检查是否拥有全部5种权限
+                    has_all_permissions = True
+                    for perm_type in all_permissions:
+                        permissions = (
+                            db.query(FormPermission)
+                            .filter(
+                                FormPermission.form_id == form.id,
+                                FormPermission.tenant_id == tenant_id,
+                                FormPermission.permission == perm_type,
+                                (FormPermission.valid_from.is_(None) | (FormPermission.valid_from <= now)),
+                                (FormPermission.valid_to.is_(None) | (FormPermission.valid_to >= now)),
+                            )
+                            .all()
+                        )
+
+                        has_this_perm = False
+                        for perm in permissions:
+                            from app.schemas.form_permission_schemas import GrantType
+                            grant_type = GrantType(perm.grant_type)
+                            if grant_type == GrantType.USER and perm.grantee_id == user_id:
+                                has_this_perm = True
+                                break
+                            if grant_type == GrantType.ROLE and perm.grantee_id in role_ids:
+                                has_this_perm = True
+                                break
+                            if grant_type == GrantType.DEPARTMENT and department_id and perm.grantee_id == department_id:
+                                has_this_perm = True
+                                break
+                            if grant_type == GrantType.POSITION and perm.grantee_id in position_ids:
+                                has_this_perm = True
+                                break
+
+                        if not has_this_perm:
+                            has_all_permissions = False
+                            break
+
+                    if has_all_permissions:
+                        authorized_form_ids.append(form.id)
+
+                # 过滤：只显示自己创建的或拥有全部权限的表单
+                if authorized_form_ids:
+                    query = query.filter(
+                        or_(
+                            Form.owner_user_id == user_id,
+                            Form.id.in_(authorized_form_ids)
+                        )
+                    )
+                else:
+                    # 没有授权的表单，只显示自己创建的
+                    query = query.filter(Form.owner_user_id == user_id)
+
+        # 先统计总数
+        total = query.count()
 
         # 分页
         offset = (request.page - 1) * request.page_size
@@ -636,3 +715,58 @@ class FormService:
 
         logger.info(f"Cloned form: source={form_id}, new={new_form.id}, tenant={tenant_id}")
         return new_form
+
+    @staticmethod
+    def get_or_create_flow_definition(
+            form_id: int,
+            tenant_id: int,
+            user_id: int,
+            db: Session,
+    ) -> int:
+        """获取或创建表单关联的流程定义。
+
+        如果表单已有流程定义，返回其 ID；否则创建新的流程定义并关联。
+
+        Args:
+            form_id: 表单 ID
+            tenant_id: 租户 ID
+            user_id: 用户 ID
+            db: 数据库会话
+
+        Returns:
+            流程定义 ID
+
+        Time: O(1), Space: O(1)
+        """
+        from app.models.workflow import FlowDefinition
+
+        # 查询表单
+        form = FormService.get_form_by_id(form_id, tenant_id, db)
+
+        # 如果已有流程定义，直接返回
+        if form.flow_definition_id:
+            return form.flow_definition_id
+
+        # 获取当前版本号
+        max_version = db.query(func.max(FlowDefinition.version)).filter(
+            FlowDefinition.form_id == form_id,
+            FlowDefinition.tenant_id == tenant_id,
+        ).scalar() or 0
+
+        # 创建新的流程定义
+        flow_def = FlowDefinition(
+            tenant_id=tenant_id,
+            form_id=form_id,
+            version=max_version + 1,
+            name=f"{form.name} - 审批流程",
+        )
+        db.add(flow_def)
+        db.flush()
+
+        # 关联到表单
+        form.flow_definition_id = flow_def.id
+        db.commit()
+        db.refresh(flow_def)
+
+        logger.info(f"Created flow definition: id={flow_def.id} for form={form_id}")
+        return flow_def.id

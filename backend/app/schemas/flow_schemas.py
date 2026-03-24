@@ -8,13 +8,50 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, RootModel, validator
 
 JsonLogicDict = Dict[str, Any]
-NODE_TYPE = Literal["start", "user", "auto", "end"]
-ASSIGNEE_TYPE = Literal["user", "group", "role", "department", "position", "expr"]
+
+
+# ==================== 枚举定义 ====================
+
+class WorkflowStatus(str, Enum):
+    """流程定义状态"""
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    DISABLED = "disabled"
+
+
+class InstanceStatus(str, Enum):
+    """流程实例状态"""
+    RUNNING = "running"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELED = "canceled"
+
+
+class OperationType(str, Enum):
+    """操作日志类型"""
+    SUBMIT = "submit"
+    APPROVE = "approve"
+    REJECT = "reject"
+    CANCEL = "cancel"
+    CC = "cc"
+
+
+class RejectStrategy(str, Enum):
+    """驳回策略"""
+    TO_START = "TO_START"  # 驳回到发起人，流程结束
+    TO_PREVIOUS = "TO_PREVIOUS"  # 驳回到上一个审批节点
+
+
+# ==================== 类型别名 ====================
+
+NODE_TYPE = Literal["start", "user", "auto", "condition", "cc", "end"]
+ASSIGNEE_TYPE = Literal["user", "group", "role", "department", "position", "expr", "form_field", "department_post"]
 APPROVE_POLICY = Literal["any", "all", "percent"]
 ROUTE_MODE = Literal["exclusive", "parallel"]
 
@@ -71,6 +108,7 @@ class FlowNodeConfig(BaseModel):
     auto_approve_cond: Optional[JsonLogicExpression] = Field(None, description="自动通过条件")
     auto_reject_cond: Optional[JsonLogicExpression] = Field(None, description="自动驳回条件")
     auto_sample_ratio: float = Field(0.0, ge=0.0, le=1.0, description="抽检比例")
+    reject_strategy: RejectStrategy = Field(RejectStrategy.TO_START, description="驳回策略")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
 
     @validator("auto_sample_ratio")

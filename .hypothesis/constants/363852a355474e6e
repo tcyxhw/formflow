@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\form_workspace_service.py
+# hypothesis_version: 6.151.9
+
+['active', 'archived', 'closed', 'created_at', 'current_submissions', 'desc', 'expired', 'max_submissions', 'name', 'published', 'submit_deadline', 'updated_at', '未知用户']

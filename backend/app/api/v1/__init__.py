@@ -16,6 +16,7 @@ from app.api.v1 import (
     flows,
     activity,
     certificate,
+    categories,
 )
 
 from app.config import settings
@@ -27,6 +28,7 @@ router.include_router(auth.router, prefix="/auth", tags=["认证"])
 router.include_router(users.router, prefix="/users", tags=["用户"])
 router.include_router(admin.router, prefix="/admin", tags=["管理员"])
 router.include_router(forms.router, prefix="/forms", tags=["表单"])
+router.include_router(categories.router, prefix="/categories", tags=["表单分类"])
 router.include_router(form_permissions.router, prefix="", tags=["表单权限"])
 router.include_router(flows.router, prefix="/flows", tags=["流程配置"])
 

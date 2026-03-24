@@ -24,6 +24,14 @@ interface DraftLoadResult {
   draft: FlowDraftResponse | null | undefined
 }
 
+interface HistorySnapshot {
+  nodes: FlowNodeConfig[]
+  routes: FlowRouteConfig[]
+  nodesGraph: Record<string, FlowNodePosition>
+  selectedNodeKey?: string
+  timestamp: number
+}
+
 const DEFAULT_NODE_METADATA: () => FlowNodeConfig = () => ({
   name: '新节点',
   type: 'user',
@@ -36,6 +44,8 @@ const DEFAULT_NODE_METADATA: () => FlowNodeConfig = () => ({
   assignee_value: null,
   auto_approve_cond: null,
   auto_reject_cond: null,
+  reject_strategy: 'TO_START',
+  condition_branches: null,
 })
 
 const DEFAULT_NODE_POSITIONS: FlowNodePosition[] = [
@@ -82,11 +92,22 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
   const lastSavedAt = ref<string | null>(null)
   const lastPublishedAt = ref<string | null>(null)
   const selectedNodeKey = ref<string>()
+  const selectedNodeKeys = ref<Set<string>>(new Set())
   const selectedRouteIndex = ref<number | null>(null)
   const loading = ref(false)
   const saving = ref(false)
   const publishing = ref(false)
   const dirty = ref(false)
+  
+  // 历史记录栈 - 初始化时创建一个空快照
+  const history = ref<HistorySnapshot[]>([{
+    nodes: [],
+    routes: [],
+    nodesGraph: {},
+    timestamp: Date.now()
+  }])
+  const historyIndex = ref(0)
+  const maxHistorySize = 50
 
   const currentNode = computed(() => {
     if (!selectedNodeKey.value) return undefined
@@ -107,12 +128,85 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
 
   const definitionLoaded = computed(() => Boolean(flowDefinitionId.value))
 
+  const canUndo = computed(() => historyIndex.value > 0)
+
+  const canRedo = computed(() => historyIndex.value < history.value.length - 1)
+
+  const createSnapshot = (): HistorySnapshot => {
+    return {
+      nodes: JSON.parse(JSON.stringify(nodes.value)),
+      routes: JSON.parse(JSON.stringify(routes.value)),
+      nodesGraph: JSON.parse(JSON.stringify(nodesGraph.value)),
+      selectedNodeKey: selectedNodeKey.value,
+      timestamp: Date.now()
+    }
+  }
+
+  const pushHistory = () => {
+    // 如果当前不在历史末尾，删除后续的历史记录
+    if (historyIndex.value < history.value.length - 1) {
+      history.value = history.value.slice(0, historyIndex.value + 1)
+    }
+    
+    // 添加新的快照
+    const snapshot = createSnapshot()
+    history.value.push(snapshot)
+    historyIndex.value = history.value.length - 1
+    
+    // 限制历史记录大小
+    if (history.value.length > maxHistorySize) {
+      history.value.shift()
+      historyIndex.value -= 1
+    }
+  }
+
+  const undo = () => {
+    if (!canUndo.value) return
+    historyIndex.value -= 1
+    const snapshot = history.value[historyIndex.value]
+    if (snapshot) {
+      nodes.value = JSON.parse(JSON.stringify(snapshot.nodes))
+      routes.value = JSON.parse(JSON.stringify(snapshot.routes))
+      nodesGraph.value = JSON.parse(JSON.stringify(snapshot.nodesGraph))
+      selectedNodeKey.value = snapshot.selectedNodeKey
+    }
+  }
+
+  const redo = () => {
+    if (!canRedo.value) return
+    historyIndex.value += 1
+    const snapshot = history.value[historyIndex.value]
+    if (snapshot) {
+      nodes.value = JSON.parse(JSON.stringify(snapshot.nodes))
+      routes.value = JSON.parse(JSON.stringify(snapshot.routes))
+      nodesGraph.value = JSON.parse(JSON.stringify(snapshot.nodesGraph))
+      selectedNodeKey.value = snapshot.selectedNodeKey
+    }
+  }
+
   const setDirty = () => {
     dirty.value = true
+    pushHistory()
   }
 
   const selectNodeByKey = (key?: string) => {
     selectedNodeKey.value = key
+
+    // 联动 selectedRouteIndex：切换节点时自动选中该节点关联的路由
+    if (!key) {
+      selectedRouteIndex.value = null
+      return
+    }
+
+    // 只选中归属于该节点的路由（来源节点是该节点的路由）
+    const outIndex = routes.value.findIndex(r => r.from_node_key === key)
+    if (outIndex !== -1) {
+      selectedRouteIndex.value = outIndex
+      return
+    }
+
+    // 该节点没有归属路由，不自动选中任何路由
+    selectedRouteIndex.value = null
   }
 
   const selectRouteByIndex = (index?: number | null) => {
@@ -121,6 +215,39 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
       return
     }
     selectedRouteIndex.value = index
+    
+    // 联动节点选择：选中路由时自动跳转到归属节点（来源节点）
+    const route = routes.value[index]
+    if (route && route.from_node_key) {
+      selectedNodeKey.value = route.from_node_key
+    }
+  }
+
+  const toggleNodeSelection = (key: string, multiSelect: boolean = false) => {
+    if (multiSelect) {
+      if (selectedNodeKeys.value.has(key)) {
+        selectedNodeKeys.value.delete(key)
+      } else {
+        selectedNodeKeys.value.add(key)
+      }
+    } else {
+      selectedNodeKeys.value.clear()
+      selectedNodeKeys.value.add(key)
+    }
+    selectedNodeKey.value = key
+  }
+
+  const clearNodeSelection = () => {
+    selectedNodeKeys.value.clear()
+    selectedNodeKey.value = undefined
+  }
+
+  const isNodeSelected = (key: string): boolean => {
+    return selectedNodeKeys.value.has(key)
+  }
+
+  const getSelectedNodeKeys = (): string[] => {
+    return Array.from(selectedNodeKeys.value)
   }
 
   const hydrateNodes = (draftNodes: FlowNodeConfig[], graph: Record<string, FlowNodePosition>) => {
@@ -210,21 +337,28 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
       lastSnapshotId.value = draft.last_snapshot_id ?? null
       selectedNodeKey.value = getNodeKey(draft.nodes[0])
       dirty.value = false
+      // 初始化历史记录
+      history.value = [createSnapshot()]
+      historyIndex.value = 0
       return
     }
     buildDefaultDraft()
     dirty.value = true
+    // 初始化历史记录
+    history.value = [createSnapshot()]
+    historyIndex.value = 0
   }
 
   const loadDefinition = async (definitionId: number): Promise<DraftLoadResult> => {
     loading.value = true
     try {
-      const { data } = await getFlowDefinitionDetail(definitionId)
-      flowDefinitionId.value = data.definition.id
-      flowName.value = data.definition.name
-      snapshots.value = data.snapshots
-      applyDraftData(data.draft)
-      return { detail: data, draft: data.draft }
+      const response = await getFlowDefinitionDetail(definitionId)
+      const detail = response.data
+      flowDefinitionId.value = detail.definition.id
+      flowName.value = detail.definition.name
+      snapshots.value = detail.snapshots || []
+      applyDraftData(detail.draft)
+      return { detail, draft: detail.draft }
     } finally {
       loading.value = false
     }
@@ -389,15 +523,20 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
     lastSavedAt,
     lastPublishedAt,
     selectedNodeKey,
+    selectedNodeKeys,
     selectedRouteIndex,
     loading,
     saving,
     publishing,
     dirty,
+    history,
+    historyIndex,
     currentNode,
     nodeOptions,
     currentRoute,
     definitionLoaded,
+    canUndo,
+    canRedo,
     loadDefinition,
     saveDraftRemote,
     publishCurrentDraft,
@@ -412,6 +551,13 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
     selectFirstNode,
     selectNodeByKey,
     selectRouteByIndex,
+    toggleNodeSelection,
+    clearNodeSelection,
+    isNodeSelected,
+    getSelectedNodeKeys,
     buildPayload,
+    undo,
+    redo,
+    pushHistory,
   }
 })

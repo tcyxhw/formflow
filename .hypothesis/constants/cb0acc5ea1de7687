@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\route_evaluator.py
+# hypothesis_version: 6.151.9
+
+['.', 'RouteRule', 'and', 'contains', 'ends_with', 'equals', 'gt', 'gte', 'ignore', 'in', 'is_null', 'lt', 'lte', 'not_equals', 'not_in', 'not_null', 'or', 'starts_with', '上下文字段名，支持嵌套访问', '子规则列表', '比较值', '比较操作符', '逻辑类型：and/or']

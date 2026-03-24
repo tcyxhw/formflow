@@ -34,6 +34,10 @@ export interface TaskResponse {
   is_overdue: boolean
   remaining_sla_minutes?: number | null
   sla_level?: SlaLevel | null
+  submitter_user_id?: number | null
+  submitter_name?: string | null
+  form_data_snapshot?: Record<string, unknown> | null
+  form_id?: number | null
 }
 
 export interface TaskListResponse {

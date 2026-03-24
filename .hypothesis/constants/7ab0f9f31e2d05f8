@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\process_service.py
+# hypothesis_version: 6.151.9
+
+[0.0, 100, 200, 4294967295, 'all', 'any', 'approve', 'approve_threshold', 'auto', 'auto_action', 'auto_approve_cond', 'auto_reject_cond', 'canceled', 'completed', 'condition_payload', 'context_snapshot', 'decision', 'end', 'error', 'field', 'finished', 'join_policy', 'matched_condition', 'message', 'n', 'n_of', 'n_of_m', 'n_required', 'node_id', 'node_name', 'parallel', 'pending', 'percent', 'percent_threshold', 'reject', 'running', 'sampled', 'task', 'user', 'utf-8', 'validation_error', '流程尚未配置', '流程缺少可执行节点', '系统自动决策', '自动审批条件解析失败']

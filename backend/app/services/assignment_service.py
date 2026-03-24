@@ -54,12 +54,16 @@ class AssignmentService:
         node: FlowNode,
         tenant_id: int,
         db: Session,
+        form_data: Optional[Dict[str, Any]] = None,
+        initiator_id: Optional[int] = None,
     ) -> Tuple[Optional[int], Optional[int]]:
         """根据节点配置与实时负载确定指派对象。
 
         :param node: 当前流程节点
         :param tenant_id: 租户 ID
         :param db: 会话
+        :param form_data: 表单数据（用于FORM_FIELD类型）
+        :param initiator_id: 发起人ID（用于DEPARTMENT_POST类型）
         :return: (assignee_user_id, assignee_group_id)
 
         Time: O(N), Space: O(1)
@@ -89,6 +93,16 @@ class AssignmentService:
 
         if node.assignee_type == "expr":
             return AssignmentService._evaluate_expression(node.assignee_value or {}, tenant_id, db)
+
+        if node.assignee_type == "form_field":
+            return AssignmentService._pick_user_by_form_field(
+                node.assignee_value, form_data or {}, tenant_id, db
+            )
+
+        if node.assignee_type == "department_post":
+            return AssignmentService._pick_user_by_department_post(
+                node.assignee_value, initiator_id or 0, tenant_id, db
+            )
 
         raise BusinessError(f"未知的指派类型: {node.assignee_type}")
 
@@ -455,3 +469,332 @@ class AssignmentService:
             )
 
         return best_user_id
+
+    @staticmethod
+    def _pick_user_by_form_field(
+        config: Optional[dict],
+        form_data: Dict[str, Any],
+        tenant_id: int,
+        db: Session,
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """从表单字段取审批人。
+
+        :param config: 配置信息，包含form_field_key
+        :param form_data: 表单数据
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: (assignee_user_id, assignee_group_id)
+
+        Time: O(1), Space: O(1)
+        """
+        if not config or not config.get("form_field_key"):
+            raise BusinessError("表单字段审批人配置不完整")
+
+        field_key = config["form_field_key"]
+        field_value = form_data.get(field_key)
+
+        if not field_value:
+            raise BusinessError(f"表单字段 {field_key} 未填写审批人")
+
+        # 支持单用户ID或用户ID列表
+        if isinstance(field_value, list):
+            user_ids = []
+            for v in field_value:
+                if v:
+                    try:
+                        user_ids.append(int(v))
+                    except (TypeError, ValueError):
+                        pass
+        else:
+            try:
+                user_ids = [int(field_value)]
+            except (TypeError, ValueError):
+                raise BusinessError(f"表单字段 {field_key} 的值不是有效的用户ID")
+
+        if not user_ids:
+            raise BusinessError(f"表单字段 {field_key} 未提供有效的用户ID")
+
+        # 如果只有一个用户，直接返回
+        if len(user_ids) == 1:
+            # 验证用户是否存在
+            user = (
+                db.query(User)
+                .filter(
+                    User.id == user_ids[0],
+                    User.tenant_id == tenant_id,
+                    User.is_active.is_(True),
+                )
+                .first()
+            )
+            if not user:
+                raise BusinessError(f"用户ID {user_ids[0]} 不存在或已禁用")
+            return user_ids[0], None
+
+        # 多个用户时，使用智能分配
+        user_id = AssignmentService._pick_best_user_intelligent(
+            {"user_ids": user_ids}, tenant_id, db
+        )
+        return user_id, None
+
+    @staticmethod
+    def _pick_user_by_department_post(
+        config: Optional[dict],
+        initiator_id: int,
+        tenant_id: int,
+        db: Session,
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """部门岗位匹配。
+
+        :param config: 配置信息，包含match_mode、post_id、department_id(可选)
+        :param initiator_id: 发起人ID
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: (assignee_user_id, assignee_group_id)
+
+        Time: O(N), Space: O(N)
+        """
+        if not config:
+            raise BusinessError("部门岗位配置不完整")
+
+        match_mode = config.get("match_mode", "FIXED")
+        post_id = config.get("post_id")
+
+        if not post_id:
+            raise BusinessError("缺少岗位配置")
+
+        if match_mode == "FIXED":
+            # 固定部门+岗位
+            department_id = config.get("department_id")
+            if not department_id:
+                raise BusinessError("FIXED模式缺少部门配置")
+            user_id = AssignmentService._find_users_by_dept_post(
+                department_id, post_id, tenant_id, db
+            )
+            return user_id, None
+
+        elif match_mode == "CURRENT":
+            # 发起人当前部门
+            dept_id = AssignmentService._get_user_department(initiator_id, tenant_id, db)
+            if not dept_id:
+                raise BusinessError("发起人未设置部门")
+            user_id = AssignmentService._find_users_by_dept_post(
+                dept_id, post_id, tenant_id, db
+            )
+            return user_id, None
+
+        elif match_mode == "ORG_CHAIN_UP":
+            # 沿部门链向上查找
+            return AssignmentService._find_users_by_org_chain(
+                initiator_id, post_id, tenant_id, db
+            )
+
+        else:
+            raise BusinessError(f"未知的岗位匹配模式: {match_mode}")
+
+    @staticmethod
+    def _get_user_department(user_id: int, tenant_id: int, db: Session) -> Optional[int]:
+        """获取用户的主属部门ID。
+
+        :param user_id: 用户ID
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: 部门ID
+
+        Time: O(1), Space: O(1)
+        """
+        user = (
+            db.query(User)
+            .filter(
+                User.id == user_id,
+                User.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        return user.department_id if user else None
+
+    @staticmethod
+    def _find_users_by_dept_post(
+        department_id: int,
+        post_id: int,
+        tenant_id: int,
+        db: Session,
+    ) -> Optional[int]:
+        """根据部门和岗位查找用户。
+
+        :param department_id: 部门ID
+        :param post_id: 岗位ID
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: 用户ID
+
+        Time: O(N), Space: O(N)
+        """
+        from app.models.user import UserDepartment, UserPosition
+
+        # 查找在指定部门且有指定岗位的用户
+        user_dept = (
+            db.query(UserDepartment.user_id)
+            .filter(
+                UserDepartment.department_id == department_id,
+                UserDepartment.tenant_id == tenant_id,
+            )
+            .subquery()
+        )
+
+        user_pos = (
+            db.query(UserPosition.user_id)
+            .filter(
+                UserPosition.position_id == post_id,
+                UserPosition.tenant_id == tenant_id,
+            )
+            .subquery()
+        )
+
+        # 获取同时满足条件的用户
+        user_ids = (
+            db.query(user_dept.c.user_id)
+            .join(user_pos, user_dept.c.user_id == user_pos.c.user_id)
+            .all()
+        )
+
+        if not user_ids:
+            return None
+
+        # 使用智能分配选择最佳用户
+        user_id_list = [uid for (uid,) in user_ids]
+        return AssignmentService._pick_best_user_intelligent(
+            {"user_ids": user_id_list}, tenant_id, db
+        )
+
+    @staticmethod
+    def _find_users_by_org_chain(
+        user_id: int,
+        post_id: int,
+        tenant_id: int,
+        db: Session,
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """沿发起人部门链向上查找岗位。
+
+        按照plan1.md规则：
+        1. 逐级向上查找
+        2. 到根部门（is_root=true）时停止
+        3. 使用user_department_post表查询
+
+        :param user_id: 用户ID
+        :param post_id: 岗位ID
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: (assignee_user_id, assignee_group_id)
+
+        Time: O(depth), Space: O(1)
+        """
+        from app.models.user import UserDepartmentPost, Department
+        
+        # 获取用户当前部门
+        user_dept = (
+            db.query(UserDepartmentPost.department_id)
+            .filter(
+                UserDepartmentPost.user_id == user_id,
+                UserDepartmentPost.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        
+        if not user_dept:
+            raise BusinessError("用户未设置部门")
+        
+        current_dept_id = user_dept[0]
+        
+        # 逐级向上查找
+        while True:
+            # 查当前部门下有没有这个岗位的人
+            result = (
+                db.query(UserDepartmentPost.user_id)
+                .filter(
+                    UserDepartmentPost.department_id == current_dept_id,
+                    UserDepartmentPost.post_id == post_id,
+                    UserDepartmentPost.tenant_id == tenant_id,
+                )
+                .first()
+            )
+            
+            if result:
+                return result[0], None
+            
+            # 查上级部门
+            current_dept = (
+                db.query(Department)
+                .filter(
+                    Department.id == current_dept_id,
+                    Department.tenant_id == tenant_id,
+                )
+                .first()
+            )
+            
+            if not current_dept or not current_dept.parent_id:
+                raise BusinessError("未找到该岗位人员")
+            
+            parent_dept = (
+                db.query(Department)
+                .filter(
+                    Department.id == current_dept.parent_id,
+                    Department.tenant_id == tenant_id,
+                )
+                .first()
+            )
+            
+            if not parent_dept:
+                raise BusinessError("未找到该岗位人员")
+            
+            # 到根部门了，不再往上（校级领导不参与自动上溯）
+            if parent_dept.is_root:
+                raise BusinessError("未找到该岗位人员")
+            
+            current_dept_id = parent_dept.id
+
+    @staticmethod
+    def _find_users_by_dept_post_single(
+        department_id: int,
+        post_id: int,
+        tenant_id: int,
+        db: Session,
+    ) -> Optional[int]:
+        """根据部门和岗位查找单个用户（简化版）。
+
+        :param department_id: 部门ID
+        :param post_id: 岗位ID
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: 用户ID
+
+        Time: O(N), Space: O(N)
+        """
+        from app.models.user import UserDepartment, UserPosition
+
+        # 查找在指定部门且有指定岗位的用户
+        user_dept = (
+            db.query(UserDepartment.user_id)
+            .filter(
+                UserDepartment.department_id == department_id,
+                UserDepartment.tenant_id == tenant_id,
+            )
+            .subquery()
+        )
+
+        user_pos = (
+            db.query(UserPosition.user_id)
+            .filter(
+                UserPosition.position_id == post_id,
+                UserPosition.tenant_id == tenant_id,
+            )
+            .subquery()
+        )
+
+        # 获取同时满足条件的用户
+        result = (
+            db.query(user_dept.c.user_id)
+            .join(user_pos, user_dept.c.user_id == user_pos.c.user_id)
+            .first()
+        )
+
+        return result[0] if result else None

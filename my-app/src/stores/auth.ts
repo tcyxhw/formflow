@@ -202,13 +202,12 @@ export const useAuthStore = defineStore('auth', {
         
         if (response.code === 200 && response.data) {
           this.userInfo = response.data
-          // ⚠️ 安全改进：不存储到 localStorage
         }
-      } catch (error) {
+      } catch (error: any) {
+        if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+          return
+        }
         console.error('Failed to get user info:', error)
-        if ((error as any)?.response?.status === 401) {
-          this.clearAuth()
-        }
         throw error
       }
     },
@@ -260,9 +259,24 @@ export const useAuthStore = defineStore('auth', {
         if (!this.userInfo) {
           try {
             await this.getUserInfo()
-          } catch (error) {
-            // 如果获取失败，中间件会处理token刷新
-            console.log('User info fetch failed, middleware will handle token refresh')
+          } catch (error: any) {
+            console.log('User info fetch failed:', error.message || error)
+            
+            // 🔧 优化：只有在401错误时才尝试刷新token
+            // 其他错误（如网络错误、超时）直接返回false
+            if (error.response?.status === 401) {
+              console.log('Got 401, trying to refresh token...')
+              const refreshed = await this.refreshAccessToken()
+              if (refreshed) {
+                // 刷新成功后重新获取用户信息
+                try {
+                  await this.getUserInfo()
+                  return true
+                } catch {
+                  return false
+                }
+              }
+            }
             return false
           }
         }
@@ -288,6 +302,36 @@ export const useAuthStore = defineStore('auth', {
       const permissions = Array.isArray(permission) ? permission : [permission]
       return permissions.some(p => this.userPermissions.includes(p))
     },
+    
+    // 获取用户统计信息
+    async fetchUserStats(): Promise<{
+      forms_created: number
+      forms_submitted: number
+      tasks_pending: number
+      tasks_completed: number
+    }> {
+      try {
+        const response = await authAPI.getCurrentUserStats()
+        if (response.code === 200 && response.data) {
+          return response.data
+        }
+        return {
+          forms_created: 0,
+          forms_submitted: 0,
+          tasks_pending: 0,
+          tasks_completed: 0
+        }
+      } catch (error) {
+        console.error('获取统计信息失败:', error)
+        return {
+          forms_created: 0,
+          forms_submitted: 0,
+          tasks_pending: 0,
+          tasks_completed: 0
+        }
+      }
+    },
+    
     // 🔧 新增：更新访问令牌
     updateAccessToken(newAccessToken: string) {
       this.accessToken = newAccessToken

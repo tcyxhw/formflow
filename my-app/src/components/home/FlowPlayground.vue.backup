@@ -1,0 +1,930 @@
+<!-- src/components/home/FlowPlayground.vue - 仅显示修改的部分 -->
+<template>
+  <div class="flow-playground">
+    <!-- 1. 顶部全局区：场景切换 -->
+    <div class="scenario-tabs" role="tablist" aria-label="审批场景切换">
+      <span class="tabs-label">场景</span>
+      <div class="tabs-list">
+        <button
+          v-for="item in scenarioOptions"
+          :key="item.value"
+          type="button"
+          class="scenario-pill"
+          :class="{ active: activeScenario === item.value }"
+          role="tab"
+          :aria-selected="activeScenario === item.value"
+          @click="handleScenarioSwitch(item.value)"
+        >
+          <span class="pill-label">{{ item.label }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 主工作区：左右两栏布局 -->
+    <div class="playground-workspace">
+      <!-- 2. 左侧控制栏 (固定宽度 360px) -->
+      <div class="left-panel">
+        <!-- 卡片 A：条件控制 -->
+        <div class="control-card">
+          <div class="card-header">
+            <h3 class="card-title">条件控制</h3>
+            <div class="help-tip">
+              <n-popover trigger="hover" placement="bottom">
+                <template #trigger>
+                  <span class="help-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M12 16v-4"></path>
+                      <path d="M12 8h.01"></path>
+                    </svg>
+                  </span>
+                </template>
+                <div style="max-width: 200px;">
+                  拖动滑块或勾选选项，实时查看流程路径和审批预测的变化
+                </div>
+              </n-popover>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="controls-wrapper">
+              <!-- 请假场景 -->
+              <div v-if="store.scenario === 'leave'" class="scenario-controls">
+                <div class="control-item">
+                  <div class="control-header">
+                    <span class="control-label">📅 请假天数</span>
+                    <span class="control-value-badge">{{ controls.leave.days }} 天</span>
+                  </div>
+                  <div class="control-description">
+                    拖动滑块调整天数，超过 3 天需要主管审批
+                  </div>
+                  <n-slider
+                    v-model:value="controls.leave.days"
+                    :min="1"
+                    :max="15"
+                    :marks="{ 3: '需主管', 7: '需总监' }"
+                    @update:value="(val) => handleControlChange('days', val)"
+                  />
+                </div>
+                <n-checkbox
+                  v-model:checked="controls.leave.medicalProof"
+                  size="large"
+                  class="control-checkbox"
+                  @update:checked="(val) => handleControlChange('medicalProof', val)"
+                >
+                  <span class="checkbox-label">📋 附病假证明（可加快审批）</span>
+                </n-checkbox>
+              </div>
+
+              <!-- 报销场景 -->
+              <div v-if="store.scenario === 'reimburse'" class="scenario-controls">
+                <div class="control-item">
+                  <div class="control-header">
+                    <span class="control-label">💵 报销金额</span>
+                    <span class="control-value-badge control-value-success">¥{{ controls.reimburse.amount }}</span>
+                  </div>
+                  <div class="control-description">
+                    拖动调整金额，超过 ¥500 需要财务审核
+                  </div>
+                  <n-slider
+                    v-model:value="controls.reimburse.amount"
+                    :min="0"
+                    :max="10000"
+                    :step="100"
+                    :marks="{ 500: '需财务', 5000: '需领导' }"
+                    @update:value="(val) => handleControlChange('amount', val)"
+                  />
+                </div>
+                <div class="checkbox-group">
+                  <n-checkbox
+                    v-model:checked="controls.reimburse.needInvoice"
+                    size="large"
+                    class="control-checkbox"
+                    @update:checked="(val) => handleControlChange('needInvoice', val)"
+                  >
+                    <span class="checkbox-label">🧾 需要发票</span>
+                  </n-checkbox>
+                  <n-checkbox
+                    v-model:checked="controls.reimburse.docsComplete"
+                    size="large"
+                    class="control-checkbox"
+                    @update:checked="(val) => handleControlChange('docsComplete', val)"
+                  >
+                    <span class="checkbox-label">📎 材料完整（影响自动审批）</span>
+                  </n-checkbox>
+                </div>
+              </div>
+
+              <!-- 分隔线 -->
+              <div class="divider"></div>
+
+              <!-- 预计处理时长 -->
+              <div class="eta-display">
+                <div class="eta-icon">⏱️</div>
+                <n-statistic label="预计处理时长" tabular-nums>
+                  <n-number-animation
+                    :from="0"
+                    :to="store.etaMinutes"
+                    :duration="300"
+                    :precision="0"
+                  />
+                  <template #suffix>
+                    <span class="eta-suffix">分钟</span>
+                  </template>
+                </n-statistic>
+                <div class="eta-description">
+                  根据当前条件预测的平均处理时间
+                </div>
+              </div>
+
+              <!-- 自动审批决策 -->
+              <div class="auto-decision">
+                <div class="decision-header">
+                  <h4 class="decision-title">🤖 AI 自动审批预测</h4>
+                  <n-popover trigger="hover" placement="top">
+                    <template #trigger>
+                      <span class="help-icon-small">?</span>
+                    </template>
+                    <div style="max-width: 250px;">
+                      <p style="margin: 0 0 8px 0; font-weight: 600;">预测说明：</p>
+                      <ul style="margin: 0; padding-left: 20px; font-size: 13px;">
+                        <li>绿色：AI 判断可自动通过</li>
+                        <li>黄色：需要人工审核</li>
+                        <li>红色：不符合条件，自动驳回</li>
+                      </ul>
+                    </div>
+                  </n-popover>
+                </div>
+
+                <div class="decision-bar">
+                  <div
+                    class="bar-segment bar-pass"
+                    :style="{ width: store.autoDecision.pass + '%' }"
+                    :title="`自动通过概率：${store.autoDecision.pass}%`"
+                  >
+                    <span v-if="store.autoDecision.pass > 12" class="bar-label">
+                      {{ store.autoDecision.pass }}%
+                    </span>
+                  </div>
+                  <div
+                    class="bar-segment bar-manual"
+                    :style="{ width: store.autoDecision.manual + '%' }"
+                    :title="`转人工概率：${store.autoDecision.manual}%`"
+                  >
+                    <span v-if="store.autoDecision.manual > 12" class="bar-label">
+                      {{ store.autoDecision.manual }}%
+                    </span>
+                  </div>
+                  <div
+                    class="bar-segment bar-reject"
+                    :style="{ width: store.autoDecision.reject + '%' }"
+                    :title="`自动驳回概率：${store.autoDecision.reject}%`"
+                  >
+                    <span v-if="store.autoDecision.reject > 12" class="bar-label">
+                      {{ store.autoDecision.reject }}%
+                    </span>
+                  </div>
+                </div>
+
+                <div class="decision-legend">
+                  <div class="legend-item">
+                    <n-tag type="success" size="small" :bordered="false">自动通过</n-tag>
+                    <span class="legend-desc">符合条件</span>
+                  </div>
+                  <div class="legend-item">
+                    <n-tag type="warning" size="small" :bordered="false">转人工</n-tag>
+                    <span class="legend-desc">需审核</span>
+                  </div>
+                  <div class="legend-item">
+                    <n-tag type="error" size="small" :bordered="false">自动驳回</n-tag>
+                    <span class="legend-desc">不符合</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 卡片 B：实时指标（与 AI 预测合并） -->
+        <div class="metrics-card">
+          <div class="metrics-header">
+            <span class="metrics-label">实时指标</span>
+            <span class="metrics-badge">Live</span>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-item">
+              <span class="metric-label">自动通过</span>
+              <strong class="metric-value">{{ autoDecision.pass }}%</strong>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">人工复核</span>
+              <strong class="metric-value">{{ autoDecision.manual }}%</strong>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">驳回率</span>
+              <strong class="metric-value">{{ autoDecision.reject }}%</strong>
+            </div>
+          </div>
+          <div class="metrics-progress">
+            <div class="progress-line" :style="{ '--value': autoDecision.pass + '%' }"></div>
+            <div class="progress-line warn" :style="{ '--value': autoDecision.manual + '%' }"></div>
+            <div class="progress-line danger" :style="{ '--value': autoDecision.reject + '%' }"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 右侧展示区 (flex: 1) -->
+      <div class="right-panel">
+        <!-- 流程图区域 -->
+        <div class="visual-card flow-visual">
+          <div class="flow-visual-content">
+            <FlowCanvas :nodes="store.flowData.nodes" :edges="store.flowData.edges" />
+          </div>
+        </div>
+
+        <!-- 审批阶段节奏卡片（放在流程图右侧边缘） -->
+        <div class="insight-card">
+          <div class="insight-head">
+            <div>
+              <p class="insight-label">节点概览</p>
+              <h4>审批阶段节奏</h4>
+            </div>
+            <n-tag size="small" :bordered="false" type="success">{{ stageTimeline.length }} 步</n-tag>
+          </div>
+          <ul class="stage-list">
+            <li v-for="stage in stageTimeline" :key="stage.id" class="stage-item">
+              <span class="stage-index">{{ stage.index }}</span>
+              <div class="stage-body">
+                <p class="stage-name">{{ stage.name }}</p>
+                <span class="stage-desc">{{ stage.description }}</span>
+              </div>
+              <n-tag size="small" :bordered="false" :type="stage.tagType">{{ stage.typeLabel }}</n-tag>
+            </li>
+            <li v-if="!stageTimeline.length" class="stage-empty">暂无流程节点，调整控件以生成路线</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 底部悬浮区：CLI 命令 -->
+    <div class="cli-float">
+      <div class="cli-shell">
+        <div class="cli-header">
+          <div class="cli-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+            <span>CLI 同步命令</span>
+          </div>
+          <button type="button" class="cli-copy-btn" @click="copyCommand">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>复制</span>
+          </button>
+        </div>
+        <pre><code>{{ commandSnippet }}</code></pre>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useHomeInteractive } from '@/stores/homeInteractive'
+import type { Scenario } from '@/stores/homeInteractive'
+import FlowCanvas from './FlowCanvas.vue'
+
+const store = useHomeInteractive()
+const controls = computed(() => store.controls)
+const activeScenario = computed(() => store.scenario)
+
+const handleControlChange = (key: string, value: unknown) => {
+  store.updateControl(key, value)
+}
+
+const scenarioOptions: Array<{ label: string; value: Scenario; description: string }> = [
+  { label: '请假审批', value: 'leave', description: '≤3 天自动通过' },
+  { label: '经费报销', value: 'reimburse', description: '金额驱动路由' },
+  { label: '教室预约', value: 'room', description: '智能冲突检测' },
+  { label: '活动评奖', value: 'award', description: '多评委合议' },
+  { label: '证明开具', value: 'certificate', description: '电子签章' }
+]
+
+const handleScenarioSwitch = (value: Scenario) => {
+  if (value === store.scenario) return
+  store.changeScenario(value)
+}
+
+const scenarioName = computed(() => {
+  return scenarioOptions.find((item) => item.value === store.scenario)?.label || '未知场景'
+})
+
+const stageTimeline = computed(() => {
+  if (!store.flowData.nodes?.length) return []
+
+  const typeMeta: Record<string, { label: string; desc: string; tagType: 'success' | 'info' | 'warning' | 'error' }> = {
+    start: { label: '开始', desc: '发起节点', tagType: 'success' },
+    user: { label: '人工节点', desc: '人工审核/处理', tagType: 'warning' },
+    auto: { label: '自动节点', desc: '系统自动处理', tagType: 'info' },
+    end: { label: '结束', desc: '归档或完成', tagType: 'success' }
+  }
+
+  return store.flowData.nodes.map((node, index) => {
+    const meta = typeMeta[node.type] || { label: '节点', desc: '流程节点', tagType: 'info' }
+    return {
+      id: node.id,
+      index: index + 1,
+      name: node.name,
+      typeLabel: meta.label,
+      description: meta.desc,
+      tagType: meta.tagType
+    }
+  })
+})
+</script>
+
+<style scoped>
+/* 全局与宏观布局优化 */
+.flow-playground {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: clamp(32px, 3vw, 40px);
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 249, 251, 0.9));
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.playground-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+@media (min-width: 1024px) {
+  .playground-grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    align-items: stretch;
+  }
+}
+
+.visual-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.flow-visual {
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.insight-card {
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.insight-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.insight-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #86909c;
+  font-weight: 500;
+}
+
+.insight-head h4 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d2129;
+  letter-spacing: -0.01em;
+}
+
+.stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stage-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(12, 16, 32, 0.06);
+  transition: all 0.2s ease;
+}
+
+.stage-item:hover {
+  padding-left: 8px;
+}
+
+.stage-item:last-child {
+  border-bottom: none;
+}
+
+.stage-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(15, 18, 23, 0.06);
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d2129;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stage-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stage-name {
+  margin: 0;
+  font-weight: 600;
+  color: #1d2129;
+  font-size: 14px;
+}
+
+.stage-desc {
+  font-size: 12px;
+  color: #86909c;
+}
+
+.stage-empty {
+  text-align: center;
+  color: #86909c;
+  font-size: 13px;
+  padding: 32px 0;
+  font-weight: 400;
+}
+
+@media (max-width: 768px) {
+  .flow-playground {
+    border-radius: 20px;
+    padding: 20px;
+  }
+
+  .card-content {
+    padding: 20px;
+  }
+
+  .insight-card {
+    padding: 20px;
+  }
+
+  .decision-bar {
+    height: 48px;
+  }
+
+  .decision-legend {
+    flex-direction: column;
+  }
+
+  .insight-head h4 {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scenario-pill,
+  .control-card,
+  .flow-card,
+  .control-checkbox,
+  .bar-segment {
+    transition: none;
+  }
+
+  .control-card:hover,
+  .flow-card:hover,
+  .scenario-pill:hover,
+  .bar-segment:hover {
+    transform: none;
+  }
+}
+
+/* 场景选择区 - Pill 胶囊标签样式 */
+.scenario-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tabs-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #86909c;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scenario-pill {
+  position: relative;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #F2F3F5;
+  color: #4E5969;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scenario-pill:hover {
+  background: #E5E6EB;
+  transform: translateY(-1px);
+}
+
+.scenario-pill.active {
+  background: linear-gradient(135deg, #4085F5 0%, #3A8FD5 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(64, 133, 245, 0.3);
+}
+
+.scenario-pill.active:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(64, 133, 245, 0.4);
+}
+
+/* 控制卡片样式 */
+.control-card {
+  border-radius: 20px;
+  border: 1px solid rgba(12, 16, 32, 0.08);
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  padding: 32px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d2129;
+  letter-spacing: -0.01em;
+}
+
+.help-tip {
+  display: flex;
+  align-items: center;
+}
+
+.help-icon {
+  color: #86909c;
+  transition: color 0.2s ease;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-icon:hover {
+  color: #1d2129;
+  background: rgba(134, 144, 156, 0.1);
+}
+
+.card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.controls-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 控制项样式 */
+.scenario-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.control-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(15, 18, 23, 0.02);
+  transition: all 0.2s ease;
+}
+
+.control-item:hover {
+  background: rgba(15, 18, 23, 0.04);
+}
+
+.control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.control-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d2129;
+}
+
+.control-value-badge {
+  font-size: 14px;
+  font-weight: 700;
+  color: #4085F5;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(64, 133, 245, 0.1);
+  transition: all 0.2s ease;
+}
+
+.control-value-badge.control-value-success {
+  color: #18A058;
+  background: rgba(24, 160, 88, 0.1);
+}
+
+.control-value-badge.control-value-success:hover {
+  background: rgba(24, 160, 88, 0.15);
+}
+
+.control-description {
+  font-size: 12px;
+  color: #86909c;
+  margin-bottom: 8px;
+}
+
+.control-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 12px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.control-checkbox:hover {
+  background: rgba(15, 18, 23, 0.02);
+}
+
+.checkbox-label {
+  font-size: 13px;
+  color: #1d2129;
+  font-weight: 500;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(12, 16, 32, 0.08);
+  margin: 8px 0;
+}
+
+/* 预计处理时长样式 */
+.eta-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(15, 18, 23, 0.02);
+  transition: all 0.2s ease;
+}
+
+.eta-display:hover {
+  background: rgba(15, 18, 23, 0.04);
+}
+
+.eta-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.eta-display .n-statistic {
+  flex: 1;
+}
+
+.eta-suffix {
+  font-size: 13px;
+  color: #86909c;
+  font-weight: 400;
+}
+
+.eta-description {
+  font-size: 12px;
+  color: #86909c;
+  margin-top: 8px;
+}
+
+/* 自动审批决策样式 */
+.auto-decision {
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid rgba(12, 16, 32, 0.04);
+  transition: all 0.2s ease;
+}
+
+.auto-decision:hover {
+  background: rgba(248, 250, 252, 1);
+}
+
+.decision-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.decision-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d2129;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.help-icon-small {
+  color: #86909c;
+  transition: color 0.2s ease;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-icon-small:hover {
+  color: #1d2129;
+  background: rgba(134, 144, 156, 0.1);
+}
+
+.decision-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #F2F3F5;
+  margin-bottom: 12px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.bar-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-segment:hover {
+  filter: brightness(1.1);
+  transform: scaleY(1.1);
+}
+
+.bar-segment::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 50%);
+}
+
+.bar-label {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.bar-pass {
+  background: linear-gradient(90deg, #18A058 0%, #3AC885 100%);
+  box-shadow: 0 2px 8px rgba(24, 160, 88, 0.3);
+}
+
+.bar-manual {
+  background: linear-gradient(90deg, #F0B90B 0%, #F5C358 100%);
+  box-shadow: 0 2px 8px rgba(240, 185, 11, 0.3);
+}
+
+.bar-reject {
+  background: linear-gradient(90deg, #F53F3F 0%, #F7786E 100%);
+  box-shadow: 0 2px 8px rgba(245, 63, 63, 0.3);
+}
+
+.decision-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4E5969;
+}
+
+.legend-desc {
+  color: #86909c;
+}
+
+/* 流程视觉区域 */
+.flow-card {
+  border-radius: 20px;
+  border: 1px solid rgba(12, 16, 32, 0.08);
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  padding: 32px;
+}
+
+.flow-card .card-header {
+  margin-bottom: 20px;
+}
+
+/* 响应式优化 */
+@media (max-width: 1024px) {
+  .flow-card {
+    padding: 24px;
+  }
+
+  .auto-decision,
+  .eta-display {
+    padding: 12px;
+  }
+
+  .decision-legend {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .help-icon,
+  .help-icon-small {
+    width: 14px;
+    height: 14px;
+  }
+}
+</style>

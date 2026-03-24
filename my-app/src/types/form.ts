@@ -3,6 +3,7 @@
  */
 import type { FormSchema, UISchema } from './schema'
 import type { LogicSchema } from './logic'
+import type { AttachmentInfo } from './attachment'
 
 export enum FormStatus {
   DRAFT = 'draft',
@@ -27,6 +28,7 @@ export interface FormConfig {
   formSchema: FormSchema
   uiSchema: UISchema
   logicSchema: LogicSchema
+  attachments?: AttachmentInfo[]
 }
 
 export interface FormCreateRequest {
@@ -56,8 +58,11 @@ export interface FormResponse {
   max_edit_count: number
   current_version?: number
   total_submissions?: number
+  flow_definition_id?: number
   created_at: string
   updated_at: string
+  // 前端计算字段，用于控制操作按钮显示
+  can_manage?: boolean
 }
 
 export interface FormDetailResponse extends FormResponse {
@@ -70,7 +75,7 @@ export interface FormListQuery {
   page?: number
   page_size?: number
   keyword?: string
-  category?: string
+  category?: number
   status?: FormStatus
 }
 
@@ -89,3 +94,29 @@ export interface FormTemplateSummary {
 }
 
 export type FormSubmissionPayload = Record<string, unknown>
+
+/**
+ * 表单字段相关类型
+ */
+export interface FormFieldOption {
+  label: string
+  value: string | number
+}
+
+export interface FormField {
+  key: string
+  name: string
+  type: string
+  description?: string
+  required: boolean
+  options?: FormFieldOption[]
+  props: Record<string, unknown>
+  isSystem?: boolean
+}
+
+export interface FormFieldsResponse {
+  form_id: number
+  form_name: string
+  fields: FormField[]
+  system_fields: FormField[]
+}

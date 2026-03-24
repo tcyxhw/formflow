@@ -78,7 +78,9 @@ def escalate_overdue_tasks():
     db = SessionLocal()
     try:
         # 获取所有活跃租户
-        tenants = db.query(Tenant).all()
+        stmt = select(Tenant)
+        result = db.execute(stmt)
+        tenants = result.scalars().all()
 
         total_escalated = 0
         total_notified = 0

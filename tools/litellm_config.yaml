@@ -1,0 +1,9 @@
+model_list:
+  - model_name: gemini-flash-lite
+    litellm_params:
+      model: openai/gemini-3.1-flash-lite-preview
+      api_base: os.environ/YUNWU_API_BASE
+      api_key: os.environ/YUNWU_API_KEY
+
+litellm_settings:
+  master_key: sk-litellm-local

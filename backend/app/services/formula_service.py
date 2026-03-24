@@ -16,7 +16,6 @@ class FormulaService:
 
     # 支持的函数
     FUNCTIONS = {
-        # 数学函数
         'abs': abs,
         'round': round,
         'min': min,
@@ -26,26 +25,48 @@ class FormulaService:
         'floor': lambda x: int(x),
         'ceil': lambda x: int(x) + (1 if x % 1 > 0 else 0),
 
-        # 日期函数
-        'diffDays': lambda end, start: (
-                datetime.fromisoformat(str(end)) - datetime.fromisoformat(str(start))
-        ).days,
-        'diffHours': lambda end, start: (
-                                                datetime.fromisoformat(str(end)) - datetime.fromisoformat(str(start))
-                                        ).total_seconds() / 3600,
+        'diffDays': lambda end, start: FormulaService._diff_days(end, start),
+        'diffHours': lambda end, start: FormulaService._diff_hours(end, start),
         'today': lambda: datetime.now().strftime('%Y-%m-%d'),
         'now': lambda: datetime.now().isoformat(),
 
-        # 文本函数
         'concat': lambda *args: ''.join(str(x) for x in args),
         'length': len,
         'upper': str.upper,
         'lower': str.lower,
         'trim': str.strip,
 
-        # 条件函数
         'if': lambda cond, true_val, false_val: true_val if cond else false_val,
     }
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> datetime:
+        if isinstance(value, (int, float)):
+            if value > 1e12:
+                return datetime.fromtimestamp(value / 1000)
+            else:
+                return datetime.fromtimestamp(value)
+        elif isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return datetime.strptime(value, '%Y-%m-%d')
+        elif isinstance(value, datetime):
+            return value
+        else:
+            raise ValidationError(f"无法解析日期值: {value}")
+
+    @staticmethod
+    def _diff_days(end: Any, start: Any) -> int:
+        end_dt = FormulaService._parse_datetime(end)
+        start_dt = FormulaService._parse_datetime(start)
+        return (end_dt - start_dt).days
+
+    @staticmethod
+    def _diff_hours(end: Any, start: Any) -> float:
+        end_dt = FormulaService._parse_datetime(end)
+        start_dt = FormulaService._parse_datetime(start)
+        return (end_dt - start_dt).total_seconds() / 3600
 
     @staticmethod
     def extract_dependencies(formula: str) -> List[str]:
@@ -54,8 +75,9 @@ class FormulaService:
 
         Example:
             "${price} * ${quantity}" -> ["price", "quantity"]
+            "${date_range}.start" -> ["date_range"]
         """
-        pattern = r'\$\{(\w+)\}'
+        pattern = r'\$\{(\w+)'
         return re.findall(pattern, formula)
 
     @staticmethod
@@ -63,23 +85,57 @@ class FormulaService:
         """
         替换公式中的变量引用
 
+        支持以下格式：
+        - ${field_name}: 直接引用字段值
+        - ${field_name}.start: 引用日期范围字段的开始时间
+        - ${field_name}.end: 引用日期范围字段的结束时间
+        - ${field_name}[0], ${field_name}[1]: 引用数组字段的元素
+
         Example:
             formula: "${price} * ${quantity}"
             context: {"price": 100, "quantity": 5}
             返回: "100 * 5"
+
+            formula: "diffDays(${date_range}.end, ${date_range}.start) + 1"
+            context: {"date_range": [1774108800000, 1774540800000]}
+            返回: "diffDays(1774540800000, 1774108800000) + 1"
         """
 
-        def replace_func(match):
+        def full_replace(match):
             field_name = match.group(1)
+            prop_access = match.group(2)
+
             if field_name not in context:
                 raise ValidationError(f"公式引用了不存在的字段: {field_name}")
-            value = context[field_name]
-            # 字符串需要加引号
-            if isinstance(value, str):
-                return f'"{value}"'
-            return str(value)
 
-        return re.sub(r'\$\{(\w+)\}', replace_func, formula)
+            value = context[field_name]
+
+            if prop_access:
+                if prop_access == 'start':
+                    if isinstance(value, list) and len(value) >= 1:
+                        val = value[0]
+                    elif isinstance(value, dict) and 'start' in value:
+                        val = value['start']
+                    else:
+                        raise ValidationError(f"字段 {field_name} 不支持 .start 访问")
+                elif prop_access == 'end':
+                    if isinstance(value, list) and len(value) >= 2:
+                        val = value[1]
+                    elif isinstance(value, dict) and 'end' in value:
+                        val = value['end']
+                    else:
+                        raise ValidationError(f"字段 {field_name} 不支持 .end 访问")
+                else:
+                    raise ValidationError(f"不支持的属性访问: .{prop_access}")
+            else:
+                val = value
+
+            if isinstance(val, str):
+                return f'"{val}"'
+            return str(val)
+
+        pattern = r'\$\{(\w+)\}(?:\.(start|end))?'
+        return re.sub(pattern, full_replace, formula)
 
     @classmethod
     def evaluate(cls, formula: str, context: Dict[str, Any]) -> Any:

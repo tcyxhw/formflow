@@ -49,10 +49,9 @@ logger = logging.getLogger(__name__)
 class TokenService:
     """Token 管理服务 - 支持智能轮转"""
 
-    ACCESS_TOKEN_EXPIRE = 1 * 60  # 1分钟
-    # ACCESS_TOKEN_EXPIRE = 30 * 60  # 30分钟
-    REFRESH_TOKEN_EXPIRE = 5 * 60  # 5分钟
-    # REFRESH_TOKEN_EXPIRE = 7 * 24 * 60 * 60  # 7天
+    # 从配置文件读取过期时间（秒）
+    ACCESS_TOKEN_EXPIRE = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    REFRESH_TOKEN_EXPIRE = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
 
     @classmethod
     async def create_tokens(

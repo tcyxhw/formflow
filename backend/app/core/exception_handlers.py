@@ -75,6 +75,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
     # 格式化验证错误信息
     errors = []
+    serializable_details = []
     for error in exc.errors():
         field = ".".join([str(loc) for loc in error["loc"] if loc != "body"])
         message = error["msg"]
@@ -83,6 +84,24 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         else:
             errors.append(message)
 
+        # 将错误详情转换为可序列化格式
+        serializable_error = {}
+        for key, value in error.items():
+            if key == "ctx" and isinstance(value, dict):
+                # 处理 ctx 中的异常对象
+                serializable_ctx = {}
+                for ctx_key, ctx_value in value.items():
+                    if isinstance(ctx_value, Exception):
+                        serializable_ctx[ctx_key] = str(ctx_value)
+                    else:
+                        serializable_ctx[ctx_key] = ctx_value
+                serializable_error[key] = serializable_ctx
+            elif isinstance(value, Exception):
+                serializable_error[key] = str(value)
+            else:
+                serializable_error[key] = value
+        serializable_details.append(serializable_error)
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
@@ -90,7 +109,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "message": "请求参数验证失败",
             "data": {
                 "errors": errors,
-                "detail": exc.errors()
+                "detail": serializable_details
             }
         }
     )

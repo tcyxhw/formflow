@@ -1,0 +1,303 @@
+<!-- src/views/approvals/ApprovalListView.vue -->
+<template>
+  <div class="approval-list-page">
+    <n-page-header title="审批控制台" subtitle="待办任务管理" />
+
+    <n-card class="summary-card" title="SLA 概览">
+      <template #header-extra>
+        <span class="summary-hint">与筛选条件保持同步</span>
+      </template>
+      <n-spin :show="summaryLoading">
+        <n-empty v-if="!slaSummary" description="暂无任务数据" size="small" />
+        <div v-else class="summary-grid">
+          <div v-for="item in summaryMetrics" :key="item.key" class="summary-item">
+            <div class="summary-label">
+              <span>{{ item.label }}</span>
+              <SlaBadge v-if="item.level" :level="item.level" :show-remaining="false" />
+            </div>
+            <div class="summary-value">{{ item.value }}</div>
+          </div>
+        </div>
+      </n-spin>
+    </n-card>
+
+    <n-card class="filters-card" title="筛选条件">
+      <n-form inline :model="filters" label-placement="left" label-width="auto">
+        <n-form-item label="关键词">
+          <n-input
+            v-model:value="filters.keyword"
+            placeholder="节点/流程名称"
+            clearable
+            @keyup.enter="handleSearch"
+          />
+        </n-form-item>
+
+        <n-form-item label="状态">
+          <n-select
+            v-model:value="filters.status"
+            :options="statusOptions"
+            clearable
+            class="status-select"
+          />
+        </n-form-item>
+
+        <n-form-item label="SLA 级别">
+          <n-select
+            v-model:value="filters.sla_level"
+            :options="slaLevelOptions"
+            clearable
+            class="sla-select"
+          />
+        </n-form-item>
+
+        <n-form-item label="仅本人">
+          <n-switch v-model:value="filters.only_mine" @update:value="handleImmediateFilter" />
+        </n-form-item>
+
+        <n-form-item label="含组待办">
+          <n-switch v-model:value="filters.include_group_tasks" @update:value="handleImmediateFilter" />
+        </n-form-item>
+
+        <n-form-item>
+          <n-button type="primary" @click="handleSearch">查询</n-button>
+        </n-form-item>
+        <n-form-item>
+          <n-button tertiary @click="handleReset">重置</n-button>
+        </n-form-item>
+      </n-form>
+      <n-alert type="info" class="filters-hint" show-icon>
+        SLA 徽章：绿色=正常、黄色=预警、红色=紧急/逾期，可结合状态筛选快速定位风险任务。
+      </n-alert>
+    </n-card>
+
+    <n-card class="table-card" title="待办列表">
+      <n-spin :show="loading">
+        <n-data-table
+          :columns="columns"
+          :data="tasks"
+          :bordered="false"
+          :row-key="rowKey"
+          size="small"
+        />
+      </n-spin>
+      <div class="table-footer">
+        <n-pagination
+          :page="pagination.page"
+          :page-size="pagination.pageSize"
+          :item-count="pagination.total"
+          show-size-picker
+          :page-sizes="[10, 20, 30, 50]"
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </div>
+    </n-card>
+
+    <n-card
+      v-if="filters.include_group_tasks"
+      class="table-card"
+      title="小组待办池"
+      size="small"
+    >
+      <template #header-extra>
+        <div class="group-hint">未被认领的组任务，可快速认领</div>
+      </template>
+      <n-spin :show="groupLoading">
+        <n-data-table
+          :columns="groupColumns"
+          :data="groupTasks"
+          :bordered="false"
+          :row-key="rowKey"
+          size="small"
+          :loading="groupLoading"
+        />
+      </n-spin>
+      <div class="table-footer">
+        <n-pagination
+          :page="groupPagination.page"
+          :page-size="groupPagination.pageSize"
+          :item-count="groupPagination.total"
+          show-size-picker
+          :page-sizes="[10, 20, 30, 50]"
+          @update:page="handleGroupPageChange"
+          @update:page-size="handleGroupPageSizeChange"
+        />
+      </div>
+    </n-card>
+
+    <n-modal v-model:show="actionModalVisible" preset="dialog" :title="actionTitle">
+      <div class="action-form">
+        <n-input
+          v-model:value="actionComment"
+          type="textarea"
+          placeholder="请输入审批意见"
+          :autosize="{ minRows: 3, maxRows: 6 }"
+        />
+        <div class="action-buttons">
+          <n-button @click="actionModalVisible = false">取消</n-button>
+          <n-button type="primary" :loading="actionLoading" @click="submitAction">确认</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="transferModalVisible" preset="dialog" title="任务转交">
+      <div class="action-form">
+        <n-input-number
+          v-model:value="transferForm.target_user_id"
+          placeholder="输入目标用户 ID"
+          :min="1"
+        />
+        <n-input v-model:value="transferForm.message" placeholder="备注信息（可选）" />
+        <div class="action-buttons">
+          <n-button @click="transferModalVisible = false">取消</n-button>
+          <n-button type="primary" :loading="transferLoading" @click="submitTransfer">
+            确认转交
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="detailModalVisible" preset="card" title="审批详情" style="width: 1000px; max-width: 95vw;">
+      <div v-if="detailTask" class="detail-content">
+        <div class="detail-left">
+          <n-card title="审批信息" size="small" :bordered="false" class="info-card">
+            <n-descriptions label-placement="left" :column="1" bordered size="small">
+              <n-descriptions-item label="流程名称">{{ detailTask.flow_name || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="节点名称">{{ detailTask.node_name || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="提交人">{{ detailTask.submitter_name || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="任务状态">
+                <n-tag :type="statusTagType(detailTask.status, detailTask.is_overdue)" :bordered="false" size="small">{{ statusLabel(detailTask.status, detailTask.is_overdue) }}</n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="流程状态">
+                <n-tag :type="processStateTag(detailTask.process_state, detailTask.is_overdue)" :bordered="false" size="small">{{ formatProcessState(detailTask.process_state, detailTask.is_overdue) }}</n-tag>
+              </n-descriptions-item>
+              <n-descriptions-item label="截止时间">{{ formatDate(detailTask.due_at) || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="创建时间">{{ formatDate(detailTask.created_at) }}</n-descriptions-item>
+            </n-descriptions>
+          </n-card>
+        </div>
+        <div class="detail-right">
+          <n-card title="表单数据" size="small" :bordered="false" class="form-data-card">
+            <n-scrollbar style="max-height: 500px">
+              <div v-if="detailTask?.form_data_snapshot && Object.keys(detailTask.form_data_snapshot).length > 0" class="form-fields">
+                <div
+                  v-for="(item, index) in formattedFormData"
+                  :key="item.key"
+                  class="form-field-item"
+                  :class="{ 'field-alt': index % 2 === 1 }"
+                >
+                  <div class="field-label">
+                    <n-icon size="14" class="field-icon" :depth="2">
+                      <component :is="getFieldIcon(item.type)" />
+                    </n-icon>
+                    <span>{{ item.label }}</span>
+                  </div>
+                  <div class="field-value">
+                    <!-- 图片/附件字段 -->
+                    <template v-if="item.type === 'attachment'">
+                      <div v-if="item.attachments && item.attachments.length > 0" class="attachment-list">
+                        <div
+                          v-for="file in item.attachments"
+                          :key="file.id"
+                          class="attachment-item"
+                        >
+                          <template v-if="isImageFile(file.content_type)">
+                            <div class="image-preview">
+                              <n-image
+                                :src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                                :alt="file.file_name"
+                                width="120"
+                                height="90"
+                                object-fit="cover"
+                                :preview-src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                                fallback-src="/image-placeholder.png"
+                              />
+                              <n-button
+                                text
+                                type="primary"
+                                size="tiny"
+                                class="download-btn"
+                                @click="downloadAttachment(file)"
+                              >
+                                <template #icon>
+                                  <n-icon><DownloadIcon /></n-icon>
+                                </template>
+                                下载
+                              </n-button>
+                            </div>
+                          </template>
+                          <template v-else>
+                            <n-button
+                              text
+                              type="primary"
+                              size="small"
+                              @click="downloadAttachment(file)"
+                            >
+                              <template #icon>
+                                <n-icon><DocumentIcon /></n-icon>
+                              </template>
+                              {{ file.file_name }}
+                              <span class="file-size">({{ formatFileSize(file.size) }})</span>
+                            </n-button>
+                          </template>
+                        </div>
+                      </div>
+                      <span v-else class="empty-value">未上传附件</span>
+                    </template>
+
+                    <!-- 日期范围字段 -->
+                    <template v-else-if="item.type === 'date-range'">
+                      <n-tag size="small" type="info" class="date-tag">
+                        <n-icon size="12"><CalendarIcon /></n-icon>
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 日期字段 -->
+                    <template v-else-if="item.type === 'date'">
+                      <n-tag size="small" type="info" class="date-tag">
+                        <n-icon size="12"><CalendarIcon /></n-icon>
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 选项字段 -->
+                    <template v-else-if="item.type === 'select'">
+                      <n-tag size="small" :type="getSelectTagType(item.value)" class="select-tag">
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 多选字段 -->
+                    <template v-else-if="item.type === 'multi-select'">
+                      <n-space size="small" wrap>
+                        <n-tag
+                          v-for="(tag, idx) in item.displayValueArray"
+                          :key="idx"
+                          size="small"
+                          :type="getSelectTagType(tag)"
+                        >
+                          {{ tag }}
+                        </n-tag>
+                      </n-space>
+                    </template>
+
+                    <!-- 数字字段 -->
+                    <template v-else-if="item.type === 'number'">
+                      <span class="number-value">{{ item.displayValue }}</span>
+                    </template>
+
+                    <!-- 布尔字段 -->
+                    <template v-else-if="item.type === 'boolean'">
+                      <n-tag size="small" :type="item.value ? 'success' : 'default'">
+                        {{ item.displayValue }}
+                      </n-tag>
+                    </template>
+
+                    <!-- 长文本字段 -->
+                    <template v-else-if="item.type === 'textarea'">
+                      <div class="textarea-value">{{ item.displayValue }}</div>
+                    </template>
+
+                    <!-- 默认文本字段 -->
+                    <template v-

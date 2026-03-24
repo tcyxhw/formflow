@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "standards/00_ai_digest.md",
+    "standards/01_principles.md",
+    "standards/02_decision_matrix.md",
+    "standards/03_python_rules_stable.md",
+    "standards/04_python_rules_experimental.md",
+    "standards/05_vue3_rules_stable.md",
+    "standards/06_vue3_rules_experimental.md",
+    "standards/09_review_prompt.md"
+  ],
+  "default_agent": "build",
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "grep *": "allow",
+      "find *": "allow",
+      "sed *": "allow",
+      "cat *": "allow",
+      "ls *": "allow"
+    }
+  }
+}

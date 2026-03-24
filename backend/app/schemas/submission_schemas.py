@@ -41,8 +41,9 @@ class SubmissionCreateRequest(BaseModel):
 
     @validator('data')
     def validate_data(cls, v):
-        if not v:
+        if v is None:
             raise ValueError("表单数据不能为空")
+        # 允许空对象，但不允许 None
         return v
 
 
@@ -110,6 +111,11 @@ class SubmissionResponse(BaseModel):
     form_name: Optional[str] = None
     submitter_name: Optional[str] = None
     version_num: Optional[int] = None
+    process_instance_id: Optional[int] = Field(default=None, description="关联流程实例ID")
+    process_state: Optional[str] = Field(default=None, description="流程状态：running/finished/canceled")
+    flow_definition_id: Optional[int] = Field(default=None, description="流程定义ID")
+    due_at: Optional[datetime] = Field(default=None, description="SLA截止时间")
+    is_overdue: Optional[bool] = Field(default=None, description="是否超时")
 
     class Config:
         from_attributes = True

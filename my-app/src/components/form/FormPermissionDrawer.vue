@@ -81,8 +81,52 @@
       <n-form-item label="授权类型" path="grantType">
         <n-select v-model:value="createForm.grantType" :options="grantTypeOptions" />
       </n-form-item>
-      <n-form-item label="对象ID" path="granteeId">
-        <n-input-number v-model:value="createForm.granteeId" :min="1" style="width: 100%" />
+      
+      <!-- 动态选择器：根据授权类型显示不同的选择器 -->
+      <n-form-item v-if="createForm.grantType === 'user'" label="选择用户" path="granteeId">
+        <n-select
+          v-model:value="createForm.granteeId"
+          :options="userOptions"
+          :loading="loadingUsers"
+          filterable
+          remote
+          clearable
+          placeholder="搜索并选择用户"
+          @search="handleSearchUsers"
+        />
+      </n-form-item>
+
+      <n-form-item v-else-if="createForm.grantType === 'role'" label="选择角色" path="granteeId">
+        <n-select
+          v-model:value="createForm.granteeId"
+          :options="roleOptions"
+          :loading="loadingRoles"
+          filterable
+          clearable
+          placeholder="选择角色"
+        />
+      </n-form-item>
+
+      <n-form-item v-else-if="createForm.grantType === 'department'" label="选择部门" path="granteeId">
+        <n-select
+          v-model:value="createForm.granteeId"
+          :options="departmentOptions"
+          :loading="loadingDepartments"
+          filterable
+          clearable
+          placeholder="选择部门"
+        />
+      </n-form-item>
+
+      <n-form-item v-else-if="createForm.grantType === 'position'" label="选择岗位" path="granteeId">
+        <n-select
+          v-model:value="createForm.granteeId"
+          :options="positionOptions"
+          :loading="loadingPositions"
+          filterable
+          clearable
+          placeholder="选择岗位"
+        />
       </n-form-item>
       <n-form-item label="权限" path="permission">
         <n-select v-model:value="createForm.permission" :options="permissionOptions" />
@@ -112,7 +156,6 @@
 
 <script setup lang="ts">
 import { computed, h, reactive, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
 import { NButton, NEmpty, NPopconfirm, NSpace, NTag } from 'naive-ui'
 import { Icon } from '@iconify/vue'
@@ -123,6 +166,8 @@ import {
   deleteFormPermission,
   getMyFormPermissions
 } from '@/api/formPermission'
+import { listUsers } from '@/api/user'
+import { listRoles, listDepartments, listPositions } from '@/api/admin'
 import type {
   FormPermission,
   FormPermissionOverview,
@@ -139,12 +184,24 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{ (e: 'update:show', value: boolean): void }>()
 
-const innerVisible = computed({
-  get: () => props.show,
-  set: (value: boolean) => emit('update:show', value)
-})
+const innerVisible = ref(false)
 
-const message = useMessage()
+watch(
+  () => props.show,
+  (newVal) => {
+    innerVisible.value = newVal
+  }
+)
+
+watch(
+  () => innerVisible.value,
+  (newVal) => {
+    if (newVal !== props.show) {
+      emit('update:show', newVal)
+    }
+  }
+)
+
 const permissions = ref<FormPermission[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -156,6 +213,18 @@ const showEditModal = ref(false)
 const creating = ref(false)
 const updating = ref(false)
 const activePermissionId = ref<number | null>(null)
+
+// 动态选择器数据
+const userOptions = ref<Array<{ label: string; value: number }>>([])
+const roleOptions = ref<Array<{ label: string; value: number }>>([])
+const departmentOptions = ref<Array<{ label: string; value: number }>>([])
+const positionOptions = ref<Array<{ label: string; value: number }>>([])
+
+// 加载状态
+const loadingUsers = ref(false)
+const loadingRoles = ref(false)
+const loadingDepartments = ref(false)
+const loadingPositions = ref(false)
 
 const createForm = reactive({
   grantType: 'user' as GrantType,
@@ -190,7 +259,12 @@ const editFormRef = ref<FormInst | null>(null)
 
 const formRules: FormRules = {
   grantType: [{ required: true, message: '请选择授权类型', trigger: 'change' }],
-  granteeId: [{ required: true, message: '请输入对象ID', trigger: 'blur' }],
+  granteeId: [{ 
+    required: true, 
+    type: 'number',
+    message: '请选择授权对象', 
+    trigger: ['blur', 'change'] 
+  }],
   permission: [{ required: true, message: '请选择权限', trigger: 'change' }],
   validTo: [{
     validator: () => {
@@ -217,7 +291,7 @@ const timeRules: FormRules = {
 
 const columns: DataTableColumns<FormPermission> = [
   { title: '授权类型', key: 'grant_type', render: row => renderTag(row.grant_type) },
-  { title: '对象ID', key: 'grantee_id' },
+  { title: '授权对象', key: 'grantee_name', render: row => row.grantee_name || `ID: ${row.grantee_id}` },
   { title: '权限', key: 'permission', render: row => renderPermission(row.permission) },
   {
     title: '生效时间',
@@ -227,7 +301,12 @@ const columns: DataTableColumns<FormPermission> = [
   {
     title: '失效时间',
     key: 'valid_to',
-    render: row => row.valid_to ? new Date(row.valid_to).toLocaleString() : '—'
+    render: row => {
+      if (!row.valid_from && !row.valid_to) {
+        return h(NTag, { size: 'small', bordered: false, type: 'success' }, { default: () => '永久有效' })
+      }
+      return row.valid_to ? new Date(row.valid_to).toLocaleString() : '永久有效'
+    }
   },
   {
     title: '操作',
@@ -290,8 +369,14 @@ const loadPermissions = async () => {
     errorMessage.value = null
     const res = await listFormPermissions(props.formId)
     permissions.value = res.data?.items || []
-  } catch (error) {
-    errorMessage.value = resolveErrorMessage(error, '权限数据加载失败')
+  } catch (error: any) {
+    // 403 表示没有 MANAGE 权限，这是正常情况
+    if (error?.response?.status === 403) {
+      permissions.value = []
+      errorMessage.value = null
+    } else {
+      errorMessage.value = resolveErrorMessage(error, '权限数据加载失败')
+    }
   } finally {
     loading.value = false
   }
@@ -320,10 +405,19 @@ const permissionChips = computed((): Array<{ value: PermissionType; label: strin
   if (!overview.value) {
     return []
   }
-  return overview.value.permissions.map((perm) => ({
+  
+  // 根据后端返回的权限字段构建权限列表
+  const permissions: PermissionType[] = []
+  if (overview.value.can_manage) permissions.push('manage')
+  if (overview.value.can_edit) permissions.push('edit')
+  if (overview.value.can_export) permissions.push('export')
+  if (overview.value.can_fill) permissions.push('fill')
+  if (overview.value.can_view) permissions.push('view')
+  
+  return permissions.map((perm) => ({
     value: perm,
     label: permissionOptions.find((item) => item.value === perm)?.label ?? perm,
-    type: (perm === 'manage' ? 'warning' : perm === 'fill' ? 'success' : 'info') as ChipType
+    type: (perm === 'manage' ? 'warning' : perm === 'edit' ? 'error' : perm === 'export' ? 'info' : perm === 'fill' ? 'success' : 'default') as ChipType
   }))
 })
 
@@ -333,7 +427,7 @@ const refreshPermissionData = async () => {
 
 const openCreateModal = () => {
   if (!props.formId) {
-    message.warning('请先保存表单')
+    console.warn('请先保存表单')
     return
   }
   createForm.grantType = 'user'
@@ -346,7 +440,7 @@ const openCreateModal = () => {
 
 const handleCreate = async () => {
   if (!props.formId) {
-    message.warning('请先保存表单')
+    console.warn('请先保存表单')
     return false
   }
   try {
@@ -359,12 +453,12 @@ const handleCreate = async () => {
       valid_from: mapTimestamp(createForm.validFrom),
       valid_to: mapTimestamp(createForm.validTo)
     })
-    message.success('新增成功')
+    console.log('新增成功')
     showCreateModal.value = false
     await loadPermissions()
     return true
   } catch (error) {
-    message.error(resolveErrorMessage(error, '新增失败'))
+    console.error('新增失败', error)
     return false
   } finally {
     creating.value = false
@@ -389,12 +483,12 @@ const handleUpdate = async () => {
       valid_from: mapTimestamp(editForm.validFrom),
       valid_to: mapTimestamp(editForm.validTo)
     })
-    message.success('更新成功')
+    console.log('更新成功')
     showEditModal.value = false
     await loadPermissions()
     return true
   } catch (error) {
-    message.error(resolveErrorMessage(error, '更新失败'))
+    console.error('更新失败', error)
     return false
   } finally {
     updating.value = false
@@ -405,10 +499,10 @@ const handleDelete = async (permissionId: number) => {
   if (!props.formId) return
   try {
     await deleteFormPermission(props.formId, permissionId)
-    message.success('已删除')
+    console.log('已删除')
     await loadPermissions()
   } catch (error) {
-    message.error(resolveErrorMessage(error, '删除失败'))
+    console.error('删除失败', error)
   }
 }
 
@@ -450,6 +544,113 @@ watch(
 )
 
 defineExpose({ loadPermissions, loadOverview })
+
+// 加载数据的方法
+const loadUsers = async (keyword?: string) => {
+  loadingUsers.value = true
+  try {
+    const res = await listUsers({ keyword, page: 1, size: 50 })
+    userOptions.value = res.data.items.map((user) => ({
+      label: `${user.name} (${user.account})`,
+      value: user.id
+    }))
+  } catch (error) {
+    console.error('加载用户列表失败', error)
+  } finally {
+    loadingUsers.value = false
+  }
+}
+
+const loadRoles = async () => {
+  loadingRoles.value = true
+  try {
+    const res = await listRoles({ page: 1, size: 100 })
+    roleOptions.value = res.data.items.map((role) => ({
+      label: role.name,
+      value: role.id
+    }))
+  } catch (error) {
+    console.error('加载角色列表失败', error)
+  } finally {
+    loadingRoles.value = false
+  }
+}
+
+const loadDepartments = async () => {
+  loadingDepartments.value = true
+  try {
+    const res = await listDepartments({ page: 1, size: 100 })
+    departmentOptions.value = res.data.items.map((dept) => ({
+      label: dept.name,
+      value: dept.id
+    }))
+  } catch (error) {
+    console.error('加载部门列表失败', error)
+  } finally {
+    loadingDepartments.value = false
+  }
+}
+
+const loadPositions = async () => {
+  loadingPositions.value = true
+  try {
+    const res = await listPositions({ page: 1, size: 100 })
+    positionOptions.value = res.data.items.map((pos) => ({
+      label: pos.name,
+      value: pos.id
+    }))
+  } catch (error) {
+    console.error('加载岗位列表失败', error)
+  } finally {
+    loadingPositions.value = false
+  }
+}
+
+// 搜索用户（远程搜索）
+const handleSearchUsers = (query: string) => {
+  if (query) {
+    loadUsers(query)
+  }
+}
+
+// 监听 grantType 变化，自动加载对应数据并清空选择
+watch(
+  () => createForm.grantType,
+  (newType, oldType) => {
+    if (!newType) return
+    
+    // 当授权类型改变时，清空之前选择的对象ID
+    if (oldType && newType !== oldType) {
+      createForm.granteeId = null
+      // 清除表单验证错误
+      createFormRef.value?.restoreValidation()
+    }
+    
+    switch (newType) {
+      case 'user':
+        if (userOptions.value.length === 0) {
+          loadUsers()
+        }
+        break
+      case 'role':
+        if (roleOptions.value.length === 0) {
+          loadRoles()
+        }
+        break
+      case 'department':
+        if (departmentOptions.value.length === 0) {
+          loadDepartments()
+        }
+        break
+      case 'position':
+        if (positionOptions.value.length === 0) {
+          loadPositions()
+        }
+        break
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

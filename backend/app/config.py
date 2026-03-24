@@ -20,10 +20,11 @@ class Settings(BaseSettings):
     # 安全配置
     SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15分钟
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7天
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 60分钟（1小时）
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30天
 
     # 数据库配置
+    # DB_HOST: str = "172.26.0.1"
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_NAME: str = "postgres"
@@ -34,8 +35,14 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+    
+    # 构建异步数据库URL
+    @property
+    def ASYNC_DATABASE_URL(self) -> str:
+        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     # Redis配置
+    # REDIS_HOST: str = "172.26.0.1"
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
@@ -49,7 +56,14 @@ class Settings(BaseSettings):
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     # CORS配置
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000", 
+        "http://localhost:8080",
+        "http://localhost:5173",  # Vite 默认端口
+        "http://localhost:5174",  # Vite 备用端口
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
 
     # 文件上传配置
     UPLOAD_DIR: str = "uploads"
@@ -87,8 +101,8 @@ class Settings(BaseSettings):
     }
 
     # ========== AI配置 ==========
-    GLM_API_KEY: str = "d00b73355718453897b8ac77aea684e7.08pMGeEK0F16Xwu4"  # 智谱 AI API Key
-    GLM_MODEL: str = "glm-4.5-flash"  # 模型名称
+    GLM_API_KEY: str = "197152b18d694beaab206f08018676d7.eECXEihBaJubNl4h"  # 智谱 AI API Key
+    GLM_MODEL: str = "glm-4.7-flash"  # 模型名称
     GLM_THINKING_TYPE: str = "disabled"  # 思考模式：enabled/disabled
     GLM_MAX_TOKENS: int = 4096  # 最大输出 tokens
     GLM_TEMPERATURE: float = 0.7  # 温度参数（0-1）

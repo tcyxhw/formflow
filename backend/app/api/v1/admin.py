@@ -5,7 +5,7 @@
 """
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, Depends, Query, Path, Request
+from fastapi import APIRouter, Depends, Query, Path, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
 import json
@@ -94,7 +94,7 @@ async def list_records(
         size: int = Query(20, ge=1, le=100, description="每页大小"),
         filters: Optional[str] = Query(None, description="筛选条件(JSON格式)"),
         sort: Optional[str] = Query(None, description="排序字段"),
-        order: Optional[str] = Query("asc", regex="^(asc|desc)$", description="排序方向"),
+        order: Optional[str] = Query("asc", pattern="^(asc|desc)$", description="排序方向"),
         current_user: User = Depends(RequireSuperAdmin),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -236,6 +236,7 @@ async def create_record(
         record_data: Dict[str, Any] = ...,
         current_user: User = Depends(RequireSuperAdmin),
         tenant_id: int = Depends(get_current_tenant_id),
+        background_tasks: BackgroundTasks = BackgroundTasks(),
         db: Session = Depends(get_db),
         request: Request = None
 ):
@@ -308,6 +309,7 @@ async def update_record(
         record_data: Dict[str, Any] = ...,
         current_user: User = Depends(RequireSuperAdmin),
         tenant_id: int = Depends(get_current_tenant_id),
+        background_tasks: BackgroundTasks = BackgroundTasks(),
         db: Session = Depends(get_db),
         request: Request = None
 ):
@@ -390,6 +392,7 @@ async def delete_record(
         record_id: int = Path(..., description="记录ID"),
         current_user: User = Depends(RequireSuperAdmin),
         tenant_id: int = Depends(get_current_tenant_id),
+        background_tasks: BackgroundTasks = BackgroundTasks(),
         db: Session = Depends(get_db),
         request: Request = None
 ):
@@ -650,3 +653,625 @@ async def export_audit_logs(
     except Exception as e:
         logger.error(f"导出审计日志失败: {str(e)}")
         raise BusinessError(f"导出失败: {str(e)}")
+
+
+
+@router.get("/roles/list", summary="获取角色列表（简化版）")
+async def list_roles(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取角色列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（角色名称/描述）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 角色列表 [{ id, name, description }]
+    - total: 总数量
+    """
+    from app.models.user import Role
+    from sqlalchemy import or_
+
+    # 构建查询
+    query = db.query(Role).filter(Role.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(
+            or_(
+                Role.name.contains(keyword),
+                Role.description.contains(keyword)
+            )
+        )
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    roles = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": role.id,
+            "name": role.name,
+            "description": role.description
+        }
+        for role in roles
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+@router.get("/departments/list", summary="获取部门列表（简化版）")
+async def list_departments(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取部门列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（部门名称）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 部门列表 [{ id, name, type, parent_id }]
+    - total: 总数量
+    """
+    from app.models.user import Department
+
+    # 构建查询
+    query = db.query(Department).filter(Department.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(Department.name.contains(keyword))
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    departments = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": dept.id,
+            "name": dept.name,
+            "type": dept.type,
+            "parent_id": dept.parent_id
+        }
+        for dept in departments
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+@router.get("/positions/list", summary="获取岗位列表（简化版）")
+async def list_positions(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取岗位列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（岗位名称）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 岗位列表 [{ id, name }]
+    - total: 总数量
+    """
+    from app.models.user import Position
+
+    # 构建查询
+    query = db.query(Position).filter(Position.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(Position.name.contains(keyword))
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    positions = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": pos.id,
+            "name": pos.name
+        }
+        for pos in positions
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+@router.get("/groups/list", summary="获取审批群组列表（简化版）")
+async def list_groups(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取审批群组列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（群组名称）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 群组列表 [{ id, name, department_id }]
+    - total: 总数量
+    """
+    from app.models.user import ApprovalGroup
+
+    # 构建查询
+    query = db.query(ApprovalGroup).filter(ApprovalGroup.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(ApprovalGroup.name.contains(keyword))
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    groups = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": group.id,
+            "name": group.name,
+            "department_id": group.department_id
+        }
+        for group in groups
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+
+# ==================== 选择器列表 API ====================
+
+@router.get("/roles/list", summary="获取角色列表（简化版）")
+async def list_roles(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取角色列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（角色名称/描述）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 角色列表 [{ id, name, description }]
+    - total: 总数量
+    """
+    from app.models.user import Role
+    from sqlalchemy import or_
+    
+    # 构建查询
+    query = db.query(Role).filter(Role.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(
+            or_(
+                Role.name.contains(keyword),
+                Role.description.contains(keyword)
+            )
+        )
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    roles = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": role.id,
+            "name": role.name,
+            "description": role.description
+        }
+        for role in roles
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+@router.get("/departments/list", summary="获取部门列表（简化版）")
+async def list_departments(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取部门列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（部门名称）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 部门列表 [{ id, name, type, parent_id }]
+    - total: 总数量
+    """
+    from app.models.user import Department
+    
+    # 构建查询
+    query = db.query(Department).filter(Department.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(Department.name.contains(keyword))
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    departments = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": dept.id,
+            "name": dept.name,
+            "type": dept.type,
+            "parent_id": dept.parent_id
+        }
+        for dept in departments
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+@router.get("/positions/list", summary="获取岗位列表（简化版）")
+async def list_positions(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取岗位列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（岗位名称）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 岗位列表 [{ id, name }]
+    - total: 总数量
+    """
+    from app.models.user import Position
+    
+    # 构建查询
+    query = db.query(Position).filter(Position.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(Position.name.contains(keyword))
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    positions = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": pos.id,
+            "name": pos.name
+        }
+        for pos in positions
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+@router.get("/groups/list", summary="获取审批群组列表（简化版）")
+async def list_groups(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取审批群组列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（群组名称）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 群组列表 [{ id, name, department_id }]
+    - total: 总数量
+    """
+    from app.models.user import ApprovalGroup
+
+    # 构建查询
+    query = db.query(ApprovalGroup).filter(ApprovalGroup.tenant_id == tenant_id)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(ApprovalGroup.name.contains(keyword))
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    offset = (page - 1) * size
+    groups = query.offset(offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": group.id,
+            "name": group.name,
+            "department_id": group.department_id
+        }
+        for group in groups
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
+
+
+# ==================== 批量导入 API ====================
+
+from fastapi import UploadFile, File, Form
+from fastapi.responses import StreamingResponse
+from app.services.batch_import_service import BatchImportService
+from app.models.batch_import import BatchImportLog
+
+
+@router.post("/batch-import", summary="批量导入用户")
+@audit_log(action="batch_import_users", resource_type="user")
+async def batch_import_users(
+    file: UploadFile = File(..., description="Excel文件"),
+    default_password: str = Form(default="123456", description="默认密码"),
+    current_user: User = Depends(RequireSuperAdmin),
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    批量导入用户（需要管理员权限）
+
+    参数:
+    - file: Excel文件（.xlsx格式）
+    - default_password: 默认密码（至少6位）
+
+    返回:
+    - total_rows: 总行数
+    - success_count: 成功数量
+    - failed_count: 失败数量
+    - results: 每行处理结果
+    - default_password: 使用的默认密码
+    """
+    # 验证文件类型
+    filename = file.filename or ""
+    if not filename.endswith(('.xlsx', '.xls')):
+        raise ValidationError("请上传Excel文件（.xlsx或.xls格式）")
+
+    # 验证密码长度
+    if len(default_password) < 6:
+        raise ValidationError("默认密码至少6位")
+
+    # 读取文件内容
+    file_content = await file.read()
+
+    if not file_content:
+        raise ValidationError("文件内容为空")
+
+    try:
+        # 执行批量导入
+        result = BatchImportService.import_users(
+            file_content=file_content,
+            filename=filename,
+            tenant_id=tenant_id,
+            default_password=default_password,
+            operator_user_id=current_user.id,
+            db=db
+        )
+
+        return success_response(
+            data=result.model_dump(),
+            message=f"导入完成: 成功{result.success_count}条, 失败{result.failed_count}条"
+        )
+
+    except ValidationError:
+        raise
+    except Exception as e:
+        logger.error(f"批量导入失败: {str(e)}")
+        raise BusinessError(f"批量导入失败: {str(e)}")
+
+
+@router.get("/batch-import/template", summary="下载批量导入模板")
+async def download_import_template(
+    current_user: User = Depends(RequireSuperAdmin),
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    下载批量导入Excel模板
+
+    返回:
+    - Excel文件
+    """
+    try:
+        excel_buffer = BatchImportService.generate_template(tenant_id, db)
+
+        return StreamingResponse(
+            iter([excel_buffer.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=batch_import_template.xlsx"}
+        )
+    except Exception as e:
+        logger.error(f"生成模板失败: {str(e)}")
+        raise BusinessError(f"生成模板失败: {str(e)}")
+
+
+@router.get("/batch-import/history", summary="获取导入历史记录")
+async def get_import_history(
+    page: int = Query(1, ge=1, description="页码"),
+    size: int = Query(20, ge=1, le=100, description="每页大小"),
+    current_user: User = Depends(RequireSuperAdmin),
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    获取批量导入历史记录
+
+    返回:
+    - items: 导入记录列表
+    - total: 总数量
+    """
+    try:
+        query = db.query(BatchImportLog).filter(
+            BatchImportLog.tenant_id == tenant_id
+        ).order_by(BatchImportLog.created_at.desc())
+
+        total = query.count()
+        logs = query.offset((page - 1) * size).limit(size).all()
+
+        items = []
+        for log in logs:
+            items.append({
+                "id": log.id,
+                "filename": log.filename,
+                "total_rows": log.total_rows,
+                "success_count": log.success_count,
+                "failed_count": log.failed_count,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "created_by": log.created_by
+            })
+
+        return success_response(data={"items": items, "total": total})
+
+    except Exception as e:
+        logger.error(f"查询导入历史失败: {str(e)}")
+        raise BusinessError(f"查询失败: {str(e)}")
+
+
+@router.get("/batch-import/history/{log_id}", summary="获取导入历史详情")
+async def get_import_history_detail(
+    log_id: int = Path(..., ge=1, description="记录ID"),
+    current_user: User = Depends(RequireSuperAdmin),
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    获取导入历史详情（包含错误信息）
+
+    返回:
+    - 导入记录详情
+    """
+    try:
+        log = db.query(BatchImportLog).filter(
+            BatchImportLog.id == log_id,
+            BatchImportLog.tenant_id == tenant_id
+        ).first()
+
+        if not log:
+            raise NotFoundError("导入记录不存在")
+
+        import json
+        error_details = []
+        if log.error_details:
+            error_details = json.loads(log.error_details)
+
+        return success_response(data={
+            "id": log.id,
+            "filename": log.filename,
+            "total_rows": log.total_rows,
+            "success_count": log.success_count,
+            "failed_count": log.failed_count,
+            "default_password": log.default_password,
+            "error_details": error_details,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "created_by": log.created_by
+        })
+
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"查询导入详情失败: {str(e)}")
+        raise BusinessError(f"查询失败: {str(e)}")

@@ -72,9 +72,22 @@ const authRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/form/Fill.vue'),
         meta: { title: '填写表单' }
       },
+      {
+        path: 'fill-center',
+        name: 'FillCenter',
+        component: () => import('@/views/form/FillCenter.vue'),
+        meta: { title: '填写工作台' }
+      },
     ]
   },
   
+  // ========== 流程配置路由 ==========
+  {
+    path: '/flow/configurator/:id',
+    name: 'FlowConfigurator',
+    component: () => import('@/views/flow/Configurator.vue'),
+    meta: { title: '流程配置器', requiresAuth: true }
+  },
   // 提交记录路由（保持不变）
   {
     path: '/submissions',
@@ -151,6 +164,40 @@ const authRoutes: RouteRecordRaw[] = [
     name: 'CertificateVerify',
     component: () => import('@/views/activity/CertificateVerify.vue'),
     meta: { title: '证书验证', public: true }
+  },
+
+  // 用户相关路由
+  {
+    path: '/user/profile',
+    name: 'UserProfile',
+    component: () => import('@/views/user/Profile.vue'),
+    meta: { title: '个人信息' }
+  },
+
+  // ========== 管理员路由 ==========
+  {
+    path: '/admin',
+    name: 'Admin',
+    meta: { title: '管理员' },
+    children: [
+      {
+        path: 'batch-import',
+        name: 'AdminBatchImport',
+        component: () => import('@/views/admin/BatchImport.vue'),
+        meta: { title: '批量用户导入', requiresAuth: true }
+      }
+    ]
+  },
+
+  // 工作区路由
+  {
+    path: '/workspace/fill',
+    name: 'FillWorkspace',
+    component: () => import('@/views/FillWorkspace.vue'),
+    meta: { 
+      title: '表单填写工作区',
+      requiresAuth: true
+    }
   }
 ]
 

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "standards/00_ai_digest.md",
+    "standards/01_principles.md",
+    "standards/02_decision_matrix.md"
+  ],
+  "agent": {
+    "rule-reviewer": {
+      "description": "审查代码变更，验证证据并维护 review_evidence",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          "standards/review_evidence.md": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "cat standards/*": "allow",
+          "cat app/*": "allow",
+          "cat src/*": "allow",
+          "cat alembic/*": "allow",
+          "cat tests/*": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "rule-proposer": {
+      "description": "从已验证证据生成规则提案并写入隔离目录",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          "standards/review_evidence.md": "allow",
+          "standards/rule_proposals/*.md": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "cat standards/*": "allow",
+          "cat app/*": "allow",
+          "cat src/*": "allow",
+          "cat alembic/*": "allow",
+          "cat tests/*": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow"
+        },
+        "webfetch": "deny"
+      }
+    }
+  }
+}

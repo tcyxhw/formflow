@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\assignment_service.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.2, 0.4, 50.0, 80.0, 100.0, 100, 3600, 'action_count', 'approve', 'approve_count', 'approve_ratio', 'avg_completion_hours', 'claimed', 'completed', 'completion_count', 'department', 'department_id', 'epoch', 'expr', 'group', 'group_id', 'open', 'position', 'position_id', 'reject', 'reject_count', 'role', 'role_id', 'user', 'user_id', 'user_ids']

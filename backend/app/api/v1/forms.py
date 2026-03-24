@@ -1,7 +1,7 @@
 """
 表单相关API端点
 """
-from fastapi import APIRouter, Depends, Query, Path, Body
+from fastapi import APIRouter, Depends, Query, Path, Body, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from app.core.database import get_db
@@ -22,10 +22,12 @@ from app.schemas.form_permission_schemas import (
 from app.services.form_service import FormService
 from app.services.form_version_service import FormVersionService
 from app.services.form_permission_service import FormPermissionService
+from app.services.form_workspace_service import FormWorkspaceService
 from app.core.response import success_response, error_response
 from app.core.exceptions import ValidationError, BusinessError, AuthorizationError, NotFoundError
 from app.utils.audit import audit_log
 from app.data.form_templates import list_all_templates, get_template_by_id
+from app.schemas.workspace_schemas import FillableFormsQuery
 import logging
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,7 @@ async def create_from_template(
         name: str = Body(..., embed=True, description="表单名称"),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
+        background_tasks: BackgroundTasks = BackgroundTasks(),
         db: Session = Depends(get_db)
 ):
     """从模板创建表单"""
@@ -103,6 +106,112 @@ async def create_from_template(
     except Exception as e:
         logger.error(f"Create from template error: {e}")
         return error_response("创建失败", 5001)
+
+
+# ========== 表单填写工作区（固定路径在前） ==========
+
+@router.get("/fillable", summary="获取可填写表单列表")
+async def get_fillable_forms(
+        page: int = Query(1, ge=1, description="页码"),
+        page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+        keyword: Optional[str] = Query(None, max_length=100, description="搜索关键词"),
+        status: Optional[str] = Query(None, description="表单状态筛选"),
+        category: Optional[str] = Query(None, description="表单类别筛选"),
+        sort_by: str = Query("created_at", description="排序字段"),
+        sort_order: str = Query("desc", description="排序方向: asc/desc"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取当前用户有权填写的表单列表
+    
+    业务逻辑：
+    1. 验证用户身份和租户上下文
+    2. 调用 FormWorkspaceService.get_fillable_forms() 获取有 FILL 权限的表单
+    3. 应用搜索关键词过滤（标题、描述）
+    4. 应用状态和类别筛选
+    5. 执行排序和分页
+    6. 计算每个表单的状态标识（是否过期、是否关闭）
+    7. 返回分页结果
+    
+    权限要求：已认证用户
+    """
+    try:
+        # 构建查询参数
+        query = FillableFormsQuery(
+            page=page,
+            page_size=page_size,
+            keyword=keyword,
+            status=status,
+            category=category,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        # 调用服务层获取可填写表单列表
+        response = FormWorkspaceService.get_fillable_forms(
+            user_id=current_user.id,
+            tenant_id=tenant_id,
+            query=query,
+            db=db
+        )
+        
+        # 返回成功响应
+        return success_response(
+            data=response.dict(),
+            message="查询成功"
+        )
+    
+    except ValidationError as e:
+        logger.error(f"Validation error in get_fillable_forms: {e}")
+        return error_response(str(e), 4001)
+    
+    except AuthorizationError as e:
+        logger.error(f"Authorization error in get_fillable_forms: {e}")
+        return error_response(str(e), 4031)
+    
+    except Exception as e:
+        logger.error(f"Error in get_fillable_forms: {e}", exc_info=True)
+        return error_response("查询可填写表单列表失败", 5001)
+
+
+# ========== 快捷入口管理（固定路径在前） ==========
+
+@router.get("/quick-access", summary="获取快捷入口表单列表")
+async def get_quick_access_forms(
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取用户的快捷入口表单列表
+    
+    业务逻辑：
+    1. 查询用户的所有快捷入口记录（按排序顺序）
+    2. 获取对应的表单详情
+    3. 计算表单状态
+    4. 返回表单列表
+    
+    权限要求：已认证用户
+    """
+    try:
+        # 调用服务层获取快捷入口表单列表
+        response = FormWorkspaceService.get_quick_access_forms(
+            user_id=current_user.id,
+            tenant_id=tenant_id,
+            db=db
+        )
+        
+        # 返回成功响应
+        return success_response(
+            data=response.dict(),
+            message="查询成功"
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in get_quick_access_forms: {e}", exc_info=True)
+        return error_response("查询快捷入口列表失败", 5001)
 
 
 # ========== 版本管理（固定路径在前） ==========
@@ -214,16 +323,44 @@ async def create_form(
 
 # ========== 表单操作（动态参数 {form_id}，放在最后） ==========
 
-@router.get("/{form_id}", summary="获取表单详情")
-async def get_form_detail(
+@router.get("/{form_id}/fields", summary="获取表单字段列表")
+async def get_form_fields(
         form_id: int = Path(..., description="表单ID"),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
 ):
-    """获取表单详情"""
+    """
+    获取表单的所有字段定义，包括表单字段和系统字段
+    
+    返回格式：
+    {
+        "form_id": 1,
+        "form_name": "招待费申请",
+        "fields": [
+            {
+                "key": "amount",
+                "name": "金额",
+                "type": "number",
+                "required": true,
+                "options": null,
+                "props": {}
+            }
+        ],
+        "system_fields": [
+            {
+                "key": "sys_submitter",
+                "name": "提交人",
+                "type": "string",
+                "required": false,
+                "options": null,
+                "props": {}
+            }
+        ]
+    }
+    """
     try:
-        # 仅限拥有管理或查看权限的用户访问
+        # 权限检查：查看权限
         try:
             FormPermissionService.ensure_permission(
                 form_id=form_id,
@@ -237,6 +374,112 @@ async def get_form_detail(
             form = FormService.get_form_by_id(form_id, tenant_id, db)
             if form.access_mode != AccessMode.PUBLIC.value:
                 raise
+
+        # 获取表单详情
+        form, current_version, _ = FormService.get_form_detail(
+            form_id=form_id,
+            tenant_id=tenant_id,
+            db=db
+        )
+
+        if not current_version:
+            return error_response("表单未配置字段", 4041)
+
+        # 提取表单字段
+        schema_json = current_version.schema_json
+        form_fields = []
+        
+        if schema_json and "fields" in schema_json:
+            for field in schema_json["fields"]:
+                form_fields.append({
+                    "key": field.get("id", ""),
+                    "name": field.get("label", ""),
+                    "type": field.get("type", ""),
+                    "description": field.get("description"),
+                    "required": field.get("required", False),
+                    "options": field.get("props", {}).get("options"),
+                    "props": field.get("props", {})
+                })
+
+        # 系统字段定义
+        system_fields = [
+            {
+                "key": "sys_submitter",
+                "name": "提交人",
+                "type": "user",
+                "description": "表单提交人",
+                "required": False,
+                "options": None,
+                "props": {}
+            },
+            {
+                "key": "sys_submitter_dept",
+                "name": "提交人部门",
+                "type": "department",
+                "description": "表单提交人所属部门",
+                "required": False,
+                "options": None,
+                "props": {}
+            },
+            {
+                "key": "sys_submit_time",
+                "name": "提交时间",
+                "type": "datetime",
+                "description": "表单提交时间",
+                "required": False,
+                "options": None,
+                "props": {}
+            }
+        ]
+
+        # 构建响应
+        from app.schemas.form_schemas import FormFieldResponse, FormFieldsResponse
+        
+        fields_response = FormFieldsResponse(
+            form_id=form.id,
+            form_name=form.name,
+            fields=[FormFieldResponse(**f) for f in form_fields],
+            system_fields=[FormFieldResponse(**f) for f in system_fields]
+        )
+
+        return success_response(data=fields_response.dict())
+
+    except NotFoundError as e:
+        logger.error(f"Get form fields error: {e}")
+        return error_response(str(e), 4041)
+    except AuthorizationError as e:
+        logger.error(f"Get form fields error: {e}")
+        return error_response(str(e), 4003)
+    except Exception as e:
+        logger.error(f"Get form fields error: {e}")
+        return error_response("查询失败", 5001)
+
+
+@router.get("/{form_id}", summary="获取表单详情")
+async def get_form_detail(
+        form_id: int = Path(..., description="表单ID"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """获取表单详情"""
+    try:
+        # 仅限拥有查看、填写、编辑或管理权限的用户访问
+        has_access = (
+            FormPermissionService.has_permission(form_id, tenant_id, PermissionType.VIEW, current_user.id, db)
+            or FormPermissionService.has_permission(form_id, tenant_id, PermissionType.FILL, current_user.id, db)
+            or FormPermissionService.has_permission(form_id, tenant_id, PermissionType.EDIT, current_user.id, db)
+            or FormPermissionService.has_permission(form_id, tenant_id, PermissionType.MANAGE, current_user.id, db)
+        )
+        if not has_access:
+            # 对于公开表单允许访问
+            try:
+                form = FormService.get_form_by_id(form_id, tenant_id, db)
+                if form.access_mode != AccessMode.PUBLIC.value:
+                    raise AuthorizationError("缺少表单访问权限")
+            except NotFoundError:
+                # 表单不存在，返回404
+                return error_response(f"表单不存在: id={form_id}", 4041)
 
         form, current_version, versions = FormService.get_form_detail(
             form_id=form_id,
@@ -260,6 +503,12 @@ async def get_form_detail(
         response_data["total_submissions"] = stats["total_submissions"]
 
         return success_response(data=response_data)
+    except NotFoundError as e:
+        logger.error(f"Get form detail error: {e}")
+        return error_response(str(e), 4041)
+    except AuthorizationError as e:
+        logger.error(f"Get form detail error: {e}")
+        return error_response(str(e), 4003)
     except Exception as e:
         logger.error(f"Get form detail error: {e}")
         return error_response("查询失败", 5001)
@@ -309,6 +558,7 @@ async def update_form(
 @audit_log(action="delete_form", resource_type="form", record_before=True)
 async def delete_form(
         form_id: int = Path(..., description="表单ID"),
+        cascade: bool = Query(False, description="是否级联删除关联的流程定义"),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -323,15 +573,19 @@ async def delete_form(
             db=db
         )
 
-        FormService.delete_form(
+        result = FormService.delete_form(
             form_id=form_id,
             tenant_id=tenant_id,
             user_id=current_user.id,
-            db=db
+            db=db,
+            cascade=cascade
         )
 
-        return success_response(message="表单删除成功")
+        return success_response(data=result, message="表单删除成功")
     except BusinessError as e:
+        # 处理409 Conflict（需要级联删除确认）
+        if e.status_code == 409:
+            return error_response(e.message, 4009, data=e.data, status_code=409)
         return error_response(str(e), 4002)
     except Exception as e:
         logger.error(f"Delete form error: {e}")
@@ -341,7 +595,7 @@ async def delete_form(
 @router.post("/{form_id}/publish", summary="发布表单")
 @audit_log(action="publish_form", resource_type="form", record_after=True)
 async def publish_form(
-        request: "FormPublishRequest" = Body(...),
+        request: "FormPublishRequest" = Body(default=None),
         form_id: int = Path(..., description="表单ID"),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
@@ -362,7 +616,7 @@ async def publish_form(
             tenant_id=tenant_id,
             user_id=current_user.id,
             db=db,
-            flow_definition_id=request.flow_definition_id
+            flow_definition_id=request.flow_definition_id if request else None
         )
 
         return success_response(
@@ -535,3 +789,130 @@ async def get_version(
     except Exception as e:
         logger.error(f"Get version error: {e}")
         return error_response("查询失败", 5001)
+
+
+@router.post("/{form_id}/quick-access", summary="添加到快捷入口")
+@audit_log(action="add_quick_access", resource_type="form")
+async def add_quick_access(
+        form_id: int = Path(..., description="表单ID"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    将表单添加到用户的快捷入口列表
+    
+    业务逻辑：
+    1. 验证表单是否存在
+    2. 检查是否已存在该快捷入口（幂等性）
+    3. 添加到快捷入口
+    
+    权限要求：已认证用户
+    """
+    try:
+        # 验证表单是否存在
+        form = FormService.get_form_by_id(form_id, tenant_id, db)
+        if not form:
+            return error_response("表单不存在", 4041)
+        
+        # 调用服务层添加快捷入口
+        FormWorkspaceService.add_quick_access(
+            user_id=current_user.id,
+            tenant_id=tenant_id,
+            form_id=form_id,
+            db=db
+        )
+        
+        # 返回成功响应
+        return success_response(
+            data={"form_id": form_id},
+            message="已添加到快捷入口"
+        )
+    
+    except NotFoundError as e:
+        logger.error(f"Form not found in add_quick_access: {e}")
+        return error_response("表单不存在", 4041)
+    
+    except Exception as e:
+        logger.error(f"Error in add_quick_access: {e}", exc_info=True)
+        return error_response("添加快捷入口失败", 5001)
+
+
+@router.delete("/{form_id}/quick-access", summary="从快捷入口移除")
+@audit_log(action="remove_quick_access", resource_type="form")
+async def remove_quick_access(
+        form_id: int = Path(..., description="表单ID"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    从快捷入口列表移除表单
+    
+    业务逻辑：
+    1. 查找对应的快捷入口记录
+    2. 如果存在，删除该记录
+    3. 返回操作结果
+    
+    权限要求：已认证用户
+    """
+    try:
+        # 调用服务层移除快捷入口
+        removed = FormWorkspaceService.remove_quick_access(
+            user_id=current_user.id,
+            tenant_id=tenant_id,
+            form_id=form_id,
+            db=db
+        )
+        
+        # 返回成功响应
+        if removed:
+            return success_response(message="已从快捷入口移除")
+        else:
+            return success_response(message="快捷入口不存在")
+    
+    except Exception as e:
+        logger.error(f"Error in remove_quick_access: {e}", exc_info=True)
+        return error_response("移除快捷入口失败", 5001)
+
+
+@router.post("/{form_id}/flow-definition", summary="获取或创建表单流程定义")
+async def get_or_create_flow_definition(
+        form_id: int = Path(..., description="表单ID"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取或创建表单关联的流程定义。
+
+    如果表单已有流程定义，返回其 ID；否则创建新的流程定义并关联。
+
+    权限要求：表单管理权限
+    """
+    try:
+        FormPermissionService.ensure_permission(
+            form_id=form_id,
+            tenant_id=tenant_id,
+            permission=PermissionType.MANAGE,
+            user_id=current_user.id,
+            db=db
+        )
+
+        flow_definition_id = FormService.get_or_create_flow_definition(
+            form_id=form_id,
+            tenant_id=tenant_id,
+            user_id=current_user.id,
+            db=db
+        )
+
+        return success_response(
+            data={"flow_definition_id": flow_definition_id},
+            message="流程定义已就绪"
+        )
+
+    except NotFoundError as e:
+        return error_response(str(e), 4041)
+    except Exception as e:
+        logger.error(f"Error in get_or_create_flow_definition: {e}")
+        return error_response("操作失败", 5001)

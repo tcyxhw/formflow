@@ -1,0 +1,98 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - SLA 时区偏差 8 小时
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the bug exists
+  - **Scoped PBT Approach**: For deterministic bugs, scope the property to the concrete failing case(s) to ensure reproducibility
+  - Test implementation details from Bug Condition in design:
+    - 固定当前时间为 2026-03-14 09:41 (UTC+8)，due_at 为 2026-03-15 17:30 (UTC+8)
+    - 使用 `datetime.utcnow()` 计算剩余时间（模拟未修复代码行为）
+    - 验证计算结果与实际剩余时间的偏差是否为 8 小时
+  - The test assertions should match the Expected Behavior Properties from design:
+    - 剩余时间应为约 31 小时 49 分钟（实际正确值）
+    - 未修复代码会计算出 39 小时 49 分钟（错误值）
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found to understand root cause:
+    - 记录时区偏差的具体数值（预期为 8 小时）
+    - 记录 `datetime.utcnow()` 返回的是 naive datetime
+    - 记录不同时区环境下的计算结果差异
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.5_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - 非 SLA 计算功能保持不变
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs:
+    - 任务创建时间（created_at、updated_at）的记录格式和精度
+    - 任务状态流转（open -> claimed -> completed）的逻辑
+    - SLA 超时判断（is_overdue）的判断标准
+    - 任务查询过滤（按 SLA 等级）的结果
+    - 其他时间字段（claimed_at、completed_at）的记录逻辑
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements:
+    - 验证任务创建、认领、完成操作的时间字段记录一致性
+    - 验证任务状态流转逻辑不受影响
+    - 验证 SLA 超时判断结果在修复前后一致（都基于 UTC 时间）
+    - 验证任务查询过滤结果保持一致
+    - 验证表单截止时间验证（submission_service.py）逻辑不受影响
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 3. Fix for SLA 时区计算错误
+
+  - [x] 3.1 修复 sla_service.py 中的时区问题
+    - 在 `calculate_due_at` 函数中，将 `datetime.utcnow()` 替换为 `datetime.now(timezone.utc)`
+    - 在 `is_overdue` 函数中，将 `datetime.utcnow()` 替换为 `datetime.now(timezone.utc)`
+    - 在 `get_escalation_threshold` 函数中，将 `datetime.utcnow()` 替换为 `datetime.now(timezone.utc)`
+    - 确保所有返回的 datetime 对象都是 timezone-aware 的 UTC 时间
+    - _Bug_Condition: isBugCondition(input) where (current_time is naive datetime from datetime.utcnow()) AND (due_at is naive datetime) AND (system timezone is UTC+8)_
+    - _Expected_Behavior: 使用 timezone-aware 的 UTC datetime 对象进行所有 SLA 计算，确保在任何时区下计算结果都与实际剩余时间一致_
+    - _Preservation: 审批任务的其他时间字段、SLA 超时判断逻辑、审批流程功能必须保持不变_
+    - _Requirements: 2.1, 2.2, 2.3_
+
+  - [x] 3.2 修复 approval_service.py 中的时区问题
+    - 在 `_calc_remaining_minutes` 函数中，将 `datetime.utcnow()` 替换为 `datetime.now(timezone.utc)`
+    - 在 `_apply_sla_level_filter`、`claim_task`、`perform_task_action`、`_build_task_response` 中统一使用 `datetime.now(timezone.utc)`
+    - 添加时区转换辅助函数 `ensure_utc_aware(dt: datetime) -> datetime`，用于处理可能的 naive datetime（来自旧数据）
+    - 在 `_calc_remaining_minutes` 中使用 `ensure_utc_aware` 处理 due_at 参数
+    - _Bug_Condition: isBugCondition(input) where calculated_remaining_time != actual_remaining_time AND abs(difference) == 8 hours_
+    - _Expected_Behavior: SLA 剩余时间计算基于一致的时区（UTC），在 UTC+8 环境下正确显示约 31 小时 49 分钟_
+    - _Preservation: 审批任务的其他功能（任务分配、状态流转、操作日志）必须完全不受影响_
+    - _Requirements: 2.1, 2.2, 2.4, 2.5_
+
+  - [x] 3.3 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - SLA 时区偏差已修复
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - 验证从 2026-03-14 09:41 (UTC+8) 到 2026-03-15 17:30 (UTC+8) 的剩余时间正确显示为约 31 小时 49 分钟
+    - 验证 `calculate_due_at` 返回的 datetime 对象包含 UTC 时区信息
+    - 验证在不同时区环境下计算结果一致
+    - _Requirements: 2.1, 2.2, 2.3, 2.5_
+
+  - [x] 3.4 Verify preservation tests still pass
+    - **Property 2: Preservation** - 非 SLA 计算功能保持不变
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm all tests still pass after fix (no regressions):
+      - 任务创建、认领、完成操作的时间字段记录一致性
+      - 任务状态流转逻辑不受影响
+      - SLA 超时判断结果保持一致
+      - 任务查询过滤结果保持一致
+      - 表单截止时间验证逻辑不受影响
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+  - 验证所有单元测试通过
+  - 验证属性测试（Property-Based Tests）通过
+  - 验证集成测试通过（如果有）
+  - 确认没有引入新的回归问题

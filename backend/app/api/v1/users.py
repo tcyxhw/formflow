@@ -4,7 +4,7 @@
 用户的增删改查等操作
 """
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query, Path
+from fastapi import APIRouter, Depends, Query, Path, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from app.core.database import get_db
@@ -106,6 +106,65 @@ async def get_users(
         page=page,
         size=size
     )
+
+
+@router.get("/list", summary="获取用户列表（简化版）")
+async def list_users(
+        keyword: Optional[str] = Query(None, description="搜索关键词"),
+        page: int = Query(1, ge=1, description="页码"),
+        size: int = Query(20, ge=1, le=100, description="每页大小"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取用户列表（简化版，用于选择器）
+
+    查询参数:
+    - keyword: 搜索关键词（账号/姓名/邮箱/手机号）
+    - page: 页码
+    - size: 每页大小
+
+    返回值:
+    - items: 用户列表 [{ id, name, account, email }]
+    - total: 总数量
+    """
+    # 构建查询
+    query = db.query(User).filter(User.tenant_id == tenant_id, User.is_active == True)
+
+    # 关键词搜索
+    if keyword:
+        query = query.filter(
+            or_(
+                User.account.contains(keyword),
+                User.name.contains(keyword),
+                User.email.contains(keyword),
+                User.phone.contains(keyword)
+            )
+        )
+
+    # 获取总数
+    total = query.count()
+
+    # 分页
+    pagination = PaginationParams(page=page, size=size)
+    users = query.offset(pagination.offset).limit(size).all()
+
+    # 构造简化响应数据
+    items = [
+        {
+            "id": user.id,
+            "name": user.name,
+            "account": user.account,
+            "email": user.email
+        }
+        for user in users
+    ]
+
+    return success_response(data={
+        "items": items,
+        "total": total
+    })
 
 
 @router.get("/{user_id}", summary="获取用户详情")
@@ -325,6 +384,30 @@ async def update_user(
     for key, value in update_dict.items():
         setattr(user, key, value)
 
+    # 如果更新了 avatar_url，需要绑定附件到用户
+    if "avatar_url" in update_dict:
+        from app.services.attachment_service import AttachmentService
+        import re
+        
+        avatar_url = update_dict["avatar_url"]
+        # 从 avatar_url 中提取附件ID
+        if avatar_url and "/attachments/" in avatar_url and "/download" in avatar_url:
+            match = re.search(r'/attachments/(\d+)/download', avatar_url)
+            if match:
+                attachment_id = int(match.group(1))
+                try:
+                    # 绑定附件到用户
+                    AttachmentService.bind_attachment(
+                        attachment_id=attachment_id,
+                        owner_type="user",
+                        owner_id=user_id,
+                        tenant_id=tenant_id,
+                        db=db
+                    )
+                    logger.info(f"头像附件绑定成功: attachment_id={attachment_id}, user_id={user_id}")
+                except Exception as e:
+                    logger.warning(f"头像附件绑定失败: {e}")
+
     db.commit()
     db.refresh(user)
 
@@ -521,7 +604,7 @@ async def get_current_user_stats(
     # 填写的表单数量（提交记录）
     forms_submitted = db.query(func.count(Submission.id)).filter(
         Submission.tenant_id == tenant_id,
-        Submission.submitter_id == user_id
+        Submission.submitter_user_id == user_id
     ).scalar() or 0
 
     # 待办审批数量（status='open' 或 'claimed'）
@@ -546,3 +629,74 @@ async def get_current_user_stats(
             "tasks_completed": tasks_completed
         }
     )
+
+
+@router.get("/me/avatar", summary="获取当前用户头像")
+async def get_current_user_avatar(
+        request: Request,
+        token: Optional[str] = Query(None, description="访问令牌（用于img标签）"),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取当前用户的头像文件
+
+    支持两种认证方式：
+    1. Authorization header（标准方式）
+    2. URL 参数 token（用于 img src）
+
+    返回值:
+    - 头像图片文件流
+    """
+    from fastapi.responses import StreamingResponse
+    from app.services.storage_service import StorageService
+    from app.core.security import decode_token
+
+    if not current_user.avatar_url:
+        raise NotFoundError("用户未设置头像")
+
+    avatar_url = current_user.avatar_url
+
+    storage_path = None
+    # 处理附件URL格式（支持完整URL和相对路径）
+    if "/attachments/" in avatar_url and "/download" in avatar_url:
+        import re
+        match = re.search(r'/attachments/(\d+)/download', avatar_url)
+        if match:
+            from app.models.form import Attachment
+            attachment_id = int(match.group(1))
+            attachment = db.query(Attachment).filter(
+                Attachment.id == attachment_id,
+                Attachment.tenant_id == tenant_id
+            ).first()
+            if attachment:
+                storage_path = attachment.storage_path
+    elif not avatar_url.startswith("http://") and not avatar_url.startswith("https://"):
+        # 不是完整URL，假设是存储路径
+        storage_path = avatar_url
+
+    if not storage_path:
+        raise NotFoundError("头像文件路径无效")
+
+    try:
+        file_data = StorageService.get_file_data(storage_path)
+        content_type = "image/jpeg"
+        if storage_path.lower().endswith(".png"):
+            content_type = "image/png"
+        elif storage_path.lower().endswith(".gif"):
+            content_type = "image/gif"
+        elif storage_path.lower().endswith(".webp"):
+            content_type = "image/webp"
+
+        return StreamingResponse(
+            iter([file_data]),
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": f'inline; filename="avatar_{current_user.id}"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"获取头像失败: {e}")
+        raise NotFoundError("头像文件不存在")

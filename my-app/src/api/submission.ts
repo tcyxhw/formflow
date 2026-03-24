@@ -75,6 +75,16 @@ export const getSubmissionList = (
 }
 
 /**
+ * 获取用户对指定表单的最新提交
+ * GET /submissions/forms/{form_id}/latest
+ */
+export const getLatestSubmission = (
+  formId: number
+): Promise<Response<SubmissionDetail | null>> => {
+  return request.get(`${BASE_PATH}/forms/${formId}/latest`)
+}
+
+/**
  * 提交统计
  * GET /submissions/statistics/{form_id}
  */
@@ -141,6 +151,7 @@ export default {
   deleteSubmission,
   getSubmissionDetail,
   getSubmissionList,
+  getLatestSubmission,
   getSubmissionStatistics,
   saveDraft,
   getDraft,

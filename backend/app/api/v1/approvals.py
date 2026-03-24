@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_tenant_id, get_current_user
@@ -110,12 +110,19 @@ async def get_sla_summary(
 @audit_log(action="claim_task", resource_type="task")
 async def claim_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
+    request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
     """认领个人或小组待办。
 
+    :param task_id: 任务ID
+    :param request: HTTP请求对象（用于审计日志）
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
     :return: 最新任务数据
 
     Time: O(1), Space: O(1)
@@ -125,16 +132,24 @@ async def claim_task(
     return success_response(data=task.model_dump(), message="任务认领成功")
 
 
+
 @router.post("/{task_id}/release", summary="释放任务")
 @audit_log(action="release_task", resource_type="task")
 async def release_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
+    request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
     """释放已认领的任务。
 
+    :param task_id: 任务ID
+    :param request: HTTP请求对象（用于审计日志）
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
     :return: 最新任务数据
 
     Time: O(1), Space: O(1)
@@ -148,6 +163,8 @@ async def release_task(
 @audit_log(action="perform_task_action", resource_type="task")
 async def perform_task_action(
     task_id: int = Path(..., ge=1, description="任务 ID"),
+    http_request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     request: "TaskActionRequest" = Body(..., description="审批动作请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
@@ -155,6 +172,12 @@ async def perform_task_action(
 ):
     """执行审批动作（通过/驳回/加签等）。
 
+    :param task_id: 任务ID
+    :param http_request: HTTP请求对象（用于审计日志）
+    :param request: 审批动作请求数据
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
     :return: 最新任务数据
 
     Time: O(1), Space: O(1)
@@ -168,12 +191,22 @@ async def perform_task_action(
 @audit_log(action="transfer_task", resource_type="task")
 async def transfer_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
+    http_request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     request: "TaskTransferRequest" = Body(..., description="转交请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
-    """将任务转交给指定用户。"""
+    """将任务转交给指定用户。
+    
+    :param task_id: 任务ID
+    :param http_request: HTTP请求对象（用于审计日志）
+    :param request: 转交请求数据
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
+    """
 
     task = TaskService.transfer_task(task_id, tenant_id, request, current_user, db)
     return success_response(data=task.model_dump(), message="任务转交成功")
@@ -183,12 +216,22 @@ async def transfer_task(
 @audit_log(action="delegate_task", resource_type="task")
 async def delegate_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
+    http_request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     request: "TaskDelegateRequest" = Body(..., description="委托请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
-    """委托当前任务给其他处理人。"""
+    """委托当前任务给其他处理人。
+    
+    :param task_id: 任务ID
+    :param http_request: HTTP请求对象（用于审计日志）
+    :param request: 委托请求数据
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
+    """
 
     task = TaskService.delegate_task(task_id, tenant_id, request, current_user, db)
     return success_response(data=task.model_dump(), message="任务委托成功")
@@ -198,12 +241,22 @@ async def delegate_task(
 @audit_log(action="add_sign_task", resource_type="task")
 async def add_sign_task(
     task_id: int = Path(..., ge=1, description="任务 ID"),
+    http_request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     request: "TaskAddSignRequest" = Body(..., description="加签请求"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
-    """为任务添加额外处理人。"""
+    """为任务添加额外处理人。
+    
+    :param task_id: 任务ID
+    :param http_request: HTTP请求对象（用于审计日志）
+    :param request: 加签请求数据
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
+    """
 
     tasks = TaskService.add_sign_tasks(task_id, tenant_id, request, current_user, db)
     return success_response(

@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\sla_service.py
+# hypothesis_version: 6.151.9
+
+[100, '30', 'SLA升级扫描完成', 'SLA超时自动升级', 'SLA超时自动回池', 'SLA超时，需人工分配值班人员', 'claimed', 'escalate_to_on_duty', 'group_id', 'new_assignee', 'note', 'old_assignee', 'open', 'reason', 'scanned', 'successful', 'tenant_id', 'to_group_pool', 'to_on_duty', 'to_supervisor', 'total_claimed', 'total_open', 'total_overdue', '值班制度暂未配置，需管理员手动处理', '值班制度未配置，需人工处理', '已回组池', '已改派上级', '租户ID不能为空']

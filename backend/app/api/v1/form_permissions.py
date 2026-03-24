@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Body, Depends, Path
 from sqlalchemy.orm import Session
 
@@ -17,12 +19,14 @@ from app.api.deps import get_current_tenant_id, get_current_user
 from app.core.database import get_db
 from app.core.response import success_response
 from app.models.user import User
+from app.models.form import FormPermission
 from app.schemas.form_permission_schemas import (
     FormPermissionCreateRequest,
     FormPermissionListResponse,
     FormPermissionMeResponse,
     FormPermissionResponse,
     FormPermissionUpdateRequest,
+    GrantType,
     PermissionType,
 )
 from app.services.form_permission_service import FormPermissionService
@@ -48,22 +52,66 @@ def _ensure_manage_permission(
     )
 
 
-@router.get("/forms/{form_id}/permissions", summary="查询表单权限", response_model=FormPermissionListResponse)
+def _get_grantee_name(grant_type: str, grantee_id: int, tenant_id: int, db: Session) -> str:
+    """根据授权类型和ID获取授权对象名称。
+
+    Time: O(1), Space: O(1)
+    """
+    try:
+        if grant_type == GrantType.USER:
+            user = db.query(User).filter(User.id == grantee_id, User.tenant_id == tenant_id).first()
+            return user.name if user else f"用户#{grantee_id}"
+        elif grant_type == GrantType.ROLE:
+            from app.models.user import Role
+            role = db.query(Role).filter(Role.id == grantee_id, Role.tenant_id == tenant_id).first()
+            return role.name if role else f"角色#{grantee_id}"
+        elif grant_type == GrantType.DEPARTMENT:
+            from app.models.user import Department
+            dept = db.query(Department).filter(Department.id == grantee_id, Department.tenant_id == tenant_id).first()
+            return dept.name if dept else f"部门#{grantee_id}"
+        elif grant_type == GrantType.POSITION:
+            from app.models.user import Position
+            pos = db.query(Position).filter(Position.id == grantee_id, Position.tenant_id == tenant_id).first()
+            return pos.name if pos else f"岗位#{grantee_id}"
+    except Exception:
+        pass
+    return f"{grant_type}#{grantee_id}"
+
+
+def _format_permission_item(item: FormPermission, tenant_id: int, db: Session) -> Dict[str, Any]:
+    """格式化权限记录为响应字典，包含授权对象名称。
+
+    Time: O(1), Space: O(1)
+    """
+    return {
+        "id": item.id,
+        "form_id": item.form_id,
+        "tenant_id": item.tenant_id,
+        "grant_type": item.grant_type,
+        "grantee_id": item.grantee_id,
+        "grantee_name": _get_grantee_name(item.grant_type, item.grantee_id, tenant_id, db),
+        "permission": item.permission,
+        "include_children": item.include_children,
+        "valid_from": item.valid_from,
+        "valid_to": item.valid_to,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+@router.get("/forms/{form_id}/permissions", summary="查询表单权限")
 async def list_permissions(
     form_id: int = Path(..., ge=1, description="表单 ID"),
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
-    """返回指定表单的权限清单。"""
+    """返回指定表单的权限清单，包含授权对象名称。"""
 
     _ensure_manage_permission(form_id, tenant_id, current_user.id, db)
     items = FormPermissionService.list_permissions(form_id, tenant_id, db)
-    response = FormPermissionListResponse(
-        items=[FormPermissionResponse.from_orm(item) for item in items],
-        total=len(items),
-    )
-    return success_response(data=response.model_dump())
+    formatted_items = [_format_permission_item(item, tenant_id, db) for item in items]
+    return success_response(data={"items": formatted_items, "total": len(formatted_items)})
 
 
 @router.get(
@@ -120,7 +168,16 @@ async def update_permission(
     """更新权限有效期设置。"""
 
     _ensure_manage_permission(form_id, tenant_id, current_user.id, db)
-    permission = FormPermissionService.update_permission(permission_id, tenant_id, request, db)
+
+    # 构建更新数据，只包含请求中实际传入的字段
+    update_data = {}
+    fields_set = request.model_fields_set
+    if "valid_from" in fields_set:
+        update_data["valid_from"] = request.valid_from
+    if "valid_to" in fields_set:
+        update_data["valid_to"] = request.valid_to
+
+    permission = FormPermissionService.update_permission(permission_id, tenant_id, update_data, db)
     return success_response(data=FormPermissionResponse.from_orm(permission).model_dump(), message="权限更新成功")
 
 

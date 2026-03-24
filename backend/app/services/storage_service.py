@@ -171,6 +171,7 @@ class StorageService:
     @classmethod
     def get_file_data(cls, storage_path: str) -> bytes:
         """获取文件二进制数据"""
+        response = None
         try:
             client = cls.get_client()
             response = client.get_object(settings.MINIO_BUCKET, storage_path)

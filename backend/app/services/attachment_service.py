@@ -33,7 +33,7 @@ class AttachmentService:
         # 上传到MinIO
         upload_result = StorageService.upload_file(
             file_data=file_content,
-            filename=file.file.name,
+            filename=file.filename,
             content_type=file.content_type,
             tenant_id=tenant_id,
             category="forms"
@@ -148,9 +148,9 @@ class AttachmentService:
             expires: int = 3600,
             db: Session = None
     ) -> str:
-        """生成下载URL"""
-        attachment = AttachmentService.get_attachment_by_id(attachment_id, tenant_id, db)
-        return StorageService.get_download_url(attachment.storage_path, expires)
+        """生成下载URL（返回后端代理URL，而不是MinIO预签名URL）"""
+        # 返回后端代理URL，确保认证一致性和避免跨域问题
+        return f"/api/v1/attachments/{attachment_id}/download"
 
     @staticmethod
     def clean_temp_attachments(db: Session) -> int:

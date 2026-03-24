@@ -3,41 +3,135 @@
       <n-form
         ref="formRef"
         :model="formData"
-        :label-width="config.uiSchema.layout.labelWidth"
+        :label-width="config.uiSchema?.layout?.labelWidth || '120px'"
         :label-placement="getLabelPlacement()"
-        :size="config.uiSchema.layout.size"
+        :size="config.uiSchema?.layout?.size"
       >
-        <template v-for="field in config.formSchema.fields" :key="field.id">
-          <!-- 普通字段 -->
+        <template v-for="field in visibleFields" :key="field.id">
           <n-form-item
-            v-if="!isLayoutField(field.type)"
+            v-if="!isLayoutField(field.type) && !isUploadField(field.type)"
             :label="field.label"
             :path="field.id"
             :rule="getFieldRule(field)"
           >
-            <!-- 字段组件 -->
             <component
               :is="getFieldComponent(field.type)"
               v-model:value="formData[field.id]"
               v-bind="getFieldProps(field)"
+              @update:value="handleFieldChange(field.id)"
             />
             
-            <!-- 帮助文本 -->
             <template v-if="field.description" #feedback>
               <span class="field-help">{{ field.description }}</span>
             </template>
           </n-form-item>
           
-          <!-- 分割线 -->
+          <n-form-item
+            v-else-if="isUploadField(field.type)"
+            :label="field.label"
+            :path="field.id"
+            :rule="getFieldRule(field)"
+          >
+            <n-space vertical>
+              <!-- 已上传文件列表 -->
+              <n-space v-if="uploadFileLists[field.id] && uploadFileLists[field.id].length > 0" wrap>
+                <div
+                  v-for="(file, index) in uploadFileLists[field.id]"
+                  :key="file.id || index"
+                  class="uploaded-file-item"
+                >
+                  <!-- 图片预览 -->
+                  <template v-if="isImageFile(file)">
+                    <div class="image-preview-container">
+                      <AuthImage
+                        :src="file.url || file.thumbnailUrl || ''"
+                        :alt="file.name"
+                        :width="100"
+                        :height="100"
+                        object-fit="cover"
+                        :preview-src="file.url || file.thumbnailUrl || ''"
+                        fallback-src="/image-placeholder.png"
+                      />
+                      <n-button
+                        class="delete-btn"
+                        type="error"
+                        size="small"
+                        circle
+                        @click="removeFile(field.id, index)"
+                      >
+                        <template #icon>
+                          <n-icon>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <line x1="18" y1="6" x2="6" y2="18"></line>
+                              <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                          </n-icon>
+                        </template>
+                      </n-button>
+                    </div>
+                  </template>
+                  <!-- 非图片文件 -->
+                  <template v-else>
+                    <div class="file-preview-container">
+                      <n-button
+                        text
+                        type="primary"
+                        @click="previewFile(file)"
+                      >
+                        {{ file.name }}
+                      </n-button>
+                      <n-button
+                        class="delete-btn"
+                        type="error"
+                        size="small"
+                        circle
+                        @click="removeFile(field.id, index)"
+                      >
+                        <template #icon>
+                          <n-icon>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <line x1="18" y1="6" x2="6" y2="18"></line>
+                              <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                          </n-icon>
+                        </template>
+                      </n-button>
+                    </div>
+                  </template>
+                </div>
+              </n-space>
+              
+              <!-- 上传按钮 -->
+              <n-upload
+                :action="getUploadAction()"
+                :headers="getUploadHeaders()"
+                :max="(field.props.maxCount as number) || 1"
+                :multiple="((field.props.maxCount as number) || 1) > 1"
+                :accept="field.props.accept as string"
+                :file-list="uploadFileLists[field.id] || []"
+                @update:file-list="(fileList: UploadFileInfo[]) => handleUploadChange(field.id, fileList)"
+                @finish="(event: { file: UploadFileInfo; event?: ProgressEvent }) => handleUploadFinish(field.id, event)"
+                @error="(event: { file: UploadFileInfo }) => handleUploadError(field.id, event)"
+                :show-file-list="false"
+              >
+                <n-button>
+                  <template #icon>
+                    <n-icon :component="uploadIcon" />
+                  </template>
+                  点击上传
+                </n-button>
+              </n-upload>
+              <span v-if="field.description" class="field-help">{{ field.description }}</span>
+            </n-space>
+          </n-form-item>
+          
           <n-divider v-else-if="field.type === FieldType.DIVIDER" />
           
-          <!-- 描述文本 -->
           <div v-else-if="field.type === FieldType.DESCRIPTION" class="description-text">
             {{ field.props.content }}
           </div>
         </template>
         
-        <!-- 提交按钮 -->
         <n-form-item>
           <n-space>
             <n-button type="primary" @click="handleSubmit">
@@ -53,12 +147,16 @@
   </template>
   
   <script setup lang="ts">
-  import { ref, reactive, watch, onMounted } from 'vue'
-  import { useMessage } from 'naive-ui'
-  import type { FormInst, FormItemRule } from 'naive-ui'
+  import { ref, reactive, watch, computed } from 'vue'
+  import { useMessage, NIcon } from 'naive-ui'
+  import type { FormInst, FormItemRule, UploadFileInfo } from 'naive-ui'
+  import { CloudUploadOutline as UploadIcon } from '@vicons/ionicons5'
   import type { FormConfig, FormSubmissionPayload } from '@/types/form'
   import type { FormField } from '@/types/field'
   import { FieldType } from '@/types/field'
+  import type { LogicRule } from '@/types/logic'
+  import { useAuthStore } from '@/stores/auth'
+  import AuthImage from '@/components/AuthImage.vue'
 
   interface Props {
     config: FormConfig
@@ -68,104 +166,309 @@
   const emit = defineEmits<{ (e: 'submit', payload: FormSubmissionPayload): void }>()
 
   const message = useMessage()
+  const authStore = useAuthStore()
   const formRef = ref<FormInst | null>(null)
   type FormValues = Record<string, unknown>
   const formData = reactive<FormValues>({})
+  const fieldVisibility = reactive<Record<string, boolean>>({})
+  const fieldRequired = reactive<Record<string, boolean>>({})
+  const uploadFileLists: Record<string, UploadFileInfo[]> = reactive({})
+
+  const uploadIcon = UploadIcon
 
   const resolveErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback
 
-  // ✅ 修复：获取标签位置（确保类型正确）
   const getLabelPlacement = () => {
-    const placement = props.config.uiSchema.layout.labelPosition
-    // Naive UI 只支持 'left' 和 'top'
+    const placement = props.config.uiSchema?.layout?.labelPosition
     if (placement === 'left' || placement === 'top') {
       return placement
     }
-    // 'right' 转换为 'left'（Naive UI 不支持 right）
     return 'left'
   }
 
-  // 初始化表单数据
+  const getUploadAction = () => {
+    return '/api/v1/attachments/upload'
+  }
+
+  const getUploadHeaders = () => {
+    const token = authStore.accessToken || localStorage.getItem('access_token')
+    return {
+      Authorization: token ? `Bearer ${token}` : ''
+    }
+  }
+
+  const handleUploadChange = (fieldId: string, fileList: UploadFileInfo[]) => {
+    uploadFileLists[fieldId] = fileList
+  }
+
+  const handleUploadFinish = (fieldId: string, event: { file: UploadFileInfo; event?: ProgressEvent }) => {
+    const file = event.file
+    
+    let response = file.response
+    
+    if (!response && event.event) {
+      const xhr = (event.event.target as XMLHttpRequest)
+      if (xhr && xhr.responseText) {
+        try {
+          response = JSON.parse(xhr.responseText)
+        } catch (e) {
+          console.error('Parse upload response error:', e)
+        }
+      }
+    }
+    
+    if (response && response.code === 200 && response.data) {
+      // 使用下载URL作为图片预览源
+      file.url = response.data.download_url || `/api/v1/attachments/${response.data.id}/download`
+      file.name = response.data.file_name || file.name
+      file.thumbnailUrl = response.data.download_url || `/api/v1/attachments/${response.data.id}/download`
+      ;(file as unknown as { attachmentId?: number }).attachmentId = response.data.id
+      
+      const currentIds: number[] = (formData[fieldId] as number[]) || []
+      if (!currentIds.includes(response.data.id)) {
+        formData[fieldId] = [...currentIds, response.data.id]
+      }
+    }
+    message.success(`${file.name} 上传成功`)
+  }
+
+  const handleUploadError = (fieldId: string, event: { file: UploadFileInfo }) => {
+    message.error(`${event.file.name} 上传失败`)
+  }
+
+  const removeFile = (fieldId: string, index: number) => {
+    const fileList = uploadFileLists[fieldId]
+    if (fileList && fileList.length > index) {
+      const file = fileList[index]
+      fileList.splice(index, 1)
+      // 更新表单数据
+      const remainingIds = fileList
+        .filter(f => f.attachmentId)
+        .map(f => f.attachmentId as number)
+      formData[fieldId] = remainingIds
+      message.success('文件已删除')
+    }
+  }
+
+  const previewFile = (file: UploadFileInfo) => {
+    const url = file.url || file.thumbnailUrl
+    if (url) {
+      window.open(url, '_blank')
+    } else {
+      message.error('文件链接不可用')
+    }
+  }
+
+  const isLayoutField = (type: string) => {
+    return [FieldType.DIVIDER, 'divider', FieldType.DESCRIPTION, 'description'].includes(type)
+  }
+
+  const isDateRangeField = (type: string) => {
+    return type === FieldType.DATE_RANGE || type === 'date-range'
+  }
+
+  const isUploadField = (type: string) => {
+    return type === FieldType.UPLOAD || type === 'upload' || type === 'image'
+  }
+
+  const isImageFile = (file: UploadFileInfo): boolean => {
+    const contentType = file.type || file.file?.type
+    if (contentType) {
+      return contentType.startsWith('image/')
+    }
+    // 根据文件扩展名判断
+    const name = file.name || ''
+    const ext = name.split('.').pop()?.toLowerCase()
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext || '')
+  }
+
+  const isCalculatedField = (type: string) => {
+    return type === FieldType.CALCULATED || type === 'calculated'
+  }
+
   const initFormData = () => {
+    if (!props.config?.formSchema?.fields || !Array.isArray(props.config.formSchema.fields)) {
+      return
+    }
+    
+    const attachmentMap = new Map<number, { name: string; url: string }>()
+    if (props.config.attachments) {
+      props.config.attachments.forEach(att => {
+        attachmentMap.set(att.id, {
+          name: att.file_name,
+          url: att.download_url,
+        })
+      })
+    }
+    
     props.config.formSchema.fields.forEach(field => {
       if (field.defaultValue !== undefined) {
         formData[field.id] = field.defaultValue
+      } else {
+        formData[field.id] = getDefaultValueForType(field.type)
+      }
+      fieldVisibility[field.id] = true
+      fieldRequired[field.id] = field.required || false
+      
+      if (isUploadField(field.type)) {
+        const existingIds = formData[field.id]
+        if (Array.isArray(existingIds) && existingIds.length > 0) {
+          uploadFileLists[field.id] = existingIds.map((id: number) => {
+            const attInfo = attachmentMap.get(id)
+            // 使用后端代理 URL，而不是 MinIO 的直接 URL
+            // 对于图片，添加 inline=true 参数以便在浏览器中直接显示
+            const isImage = attInfo?.name?.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i)
+            const proxyUrl = `/api/v1/attachments/${id}/download${isImage ? '?inline=true' : ''}`
+            return {
+              id: `existing-${id}`,
+              name: attInfo?.name || `附件 ${id}`,
+              status: 'finished' as const,
+              url: proxyUrl,
+              thumbnailUrl: proxyUrl,
+              attachmentId: id,
+            }
+          })
+        } else {
+          uploadFileLists[field.id] = []
+        }
+      } else {
+        uploadFileLists[field.id] = []
       }
     })
+    
+    applyLogicRules()
   }
 
-  // 是否是布局字段
-  const isLayoutField = (type: string) => {
-    return [FieldType.DIVIDER, FieldType.DESCRIPTION].includes(type as FieldType)
+  const getDefaultValueForType = (type: string) => {
+    switch (type) {
+      case FieldType.NUMBER:
+      case 'number':
+        return null
+      case FieldType.CHECKBOX:
+      case 'checkbox':
+        return []
+      case FieldType.DATE_RANGE:
+      case 'date-range':
+        return null
+      case FieldType.UPLOAD:
+      case 'upload':
+      case 'image':
+        return []
+      default:
+        return null
+    }
   }
 
-  // 获取字段组件
+  const visibleFields = computed(() => {
+    if (!props.config?.formSchema?.fields) return []
+    return props.config.formSchema.fields.filter(field => fieldVisibility[field.id] !== false)
+  })
+
   const getFieldComponent = (type: string) => {
     const componentMap: Record<string, string> = {
       [FieldType.TEXT]: 'n-input',
+      'text': 'n-input',
       [FieldType.TEXTAREA]: 'n-input',
+      'textarea': 'n-input',
       [FieldType.NUMBER]: 'n-input-number',
+      'number': 'n-input-number',
       [FieldType.PHONE]: 'n-input',
+      'phone': 'n-input',
       [FieldType.EMAIL]: 'n-input',
+      'email': 'n-input',
       [FieldType.SELECT]: 'n-select',
+      'select': 'n-select',
       [FieldType.RADIO]: 'n-radio-group',
+      'radio': 'n-radio-group',
       [FieldType.CHECKBOX]: 'n-checkbox-group',
+      'checkbox': 'n-checkbox-group',
       [FieldType.SWITCH]: 'n-switch',
+      'switch': 'n-switch',
       [FieldType.DATE]: 'n-date-picker',
+      'date': 'n-date-picker',
       [FieldType.DATE_RANGE]: 'n-date-picker',
+      'date-range': 'n-date-picker',
       [FieldType.TIME]: 'n-time-picker',
+      'time': 'n-time-picker',
       [FieldType.DATETIME]: 'n-date-picker',
+      'datetime': 'n-date-picker',
       [FieldType.RATE]: 'n-rate',
+      'rate': 'n-rate',
       [FieldType.UPLOAD]: 'n-upload',
+      'upload': 'n-upload',
       [FieldType.CALCULATED]: 'n-input',
+      'calculated': 'n-input',
     }
-
     return componentMap[type] || 'n-input'
   }
 
-  // 获取字段属性
   const getFieldProps = (field: FormField) => {
-    const baseProps = { ...field.props }
+    const baseProps: Record<string, unknown> = { ...field.props }
 
-    // 特殊处理
-    if (field.type === FieldType.TEXTAREA) {
+    if (field.type === FieldType.TEXTAREA || field.type === 'textarea') {
       baseProps.type = 'textarea'
     }
 
-    if (field.type === FieldType.DATE_RANGE) {
+    if (isDateRangeField(field.type)) {
       baseProps.type = 'daterange'
+      baseProps.clearable = true
     }
 
-    if (field.type === FieldType.DATETIME) {
+    if (field.type === FieldType.DATETIME || field.type === 'datetime') {
       baseProps.type = 'datetime'
     }
 
-    if (field.type === FieldType.NUMBER) {
+    if (field.type === FieldType.NUMBER || field.type === 'number') {
       baseProps.style = { width: '100%' }
     }
 
-    if (field.type === FieldType.CALCULATED) {
+    if (isCalculatedField(field.type)) {
       baseProps.readonly = true
+      baseProps.placeholder = '自动计算'
+    }
+
+    if (isUploadField(field.type)) {
+      baseProps.action = '/api/v1/attachments/upload'
+      baseProps.responseType = 'json'
+      const maxCount = field.props.maxCount as number | undefined
+      baseProps.multiple = maxCount ? maxCount > 1 : false
+      baseProps.max = maxCount || 1
+      baseProps.listType = 'text'
+    }
+
+    if (field.type === FieldType.RADIO || field.type === 'radio') {
+      baseProps.name = field.id
     }
 
     return baseProps
   }
 
-  // 获取字段验证规则
   const getFieldRule = (field: FormField): FormItemRule[] => {
     const rules: FormItemRule[] = []
+    const isRequired = fieldRequired[field.id] ?? field.required
 
-    // 必填
-    if (field.required) {
+    if (isRequired) {
       rules.push({
         required: true,
-        message: `请输入${field.label}`,
-        trigger: field.validation?.trigger || 'blur',
+        validator: (rule, value) => {
+          if (isDateRangeField(field.type)) {
+            if (!value || !Array.isArray(value) || value.length !== 2 || !value[0] || !value[1]) {
+              return new Error(`请选择${field.label}`)
+            }
+          } else if (isUploadField(field.type)) {
+            if (!value || (Array.isArray(value) && value.length === 0)) {
+              return new Error(`请上传${field.label}`)
+            }
+          } else if (value === null || value === undefined || value === '') {
+            return new Error(`请输入${field.label}`)
+          }
+          return true
+        },
+        trigger: ['blur', 'change'],
       })
     }
 
-    // 自定义验证
     if (field.validation) {
       const { pattern, min, max, message: msg } = field.validation
 
@@ -191,19 +494,18 @@
     return rules
   }
 
-  // 计算字段的值更新
-  watch(
-    () => formData,
-    () => {
-      updateCalculatedFields()
-    },
-    { deep: true }
-  )
+  const handleFieldChange = (fieldId: string) => {
+    updateCalculatedFields()
+    applyLogicRules()
+  }
 
-  // ✅ 修复：更新计算字段（添加类型）
   const updateCalculatedFields = () => {
+    if (!props.config?.formSchema?.fields || !Array.isArray(props.config.formSchema.fields)) {
+      return
+    }
+    
     const calculatedFields = props.config.formSchema.fields.filter(
-      f => f.type === FieldType.CALCULATED
+      f => isCalculatedField(f.type)
     )
 
     calculatedFields.forEach(field => {
@@ -212,14 +514,19 @@
         ? (field.props.dependencies as string[])
         : []
 
-      // 检查依赖字段是否都有值
-      const hasAllDeps = dependencies.every((dep: string) => formData[dep] !== undefined)
+      const hasAllDeps = dependencies.every((dep: string) => {
+        const val = formData[dep]
+        if (val === null || val === undefined) return false
+        if (Array.isArray(val) && val.length === 0) return false
+        return true
+      })
 
       if (hasAllDeps && formula) {
         try {
-          // 简单的公式计算
           const result = evaluateFormula(formula, formData)
-          formData[field.id] = result
+          if (result !== null && result !== undefined && !Number.isNaN(result)) {
+            formData[field.id] = result
+          }
         } catch (error) {
           console.error('Formula evaluation error:', error)
         }
@@ -227,46 +534,276 @@
     })
   }
 
-  // 简单的公式计算
   const evaluateFormula = (formula: string, context: FormValues) => {
-    // 替换变量
-    let expression = formula.replace(/\$\{(\w+)\}/g, (match, fieldId) => {
+    let expression = formula
+
+    expression = expression.replace(/\$\{(\w+)\}\.(\w+)/g, (match, fieldId, prop) => {
       const value = context[fieldId]
-      return typeof value === 'string' ? `"${value}"` : String(value)
+      
+      if (value === null || value === undefined) {
+        return 'null'
+      }
+      
+      if (Array.isArray(value)) {
+        if (value.length >= 2) {
+          let dateValue: number | null = null
+          if (prop === 'start') {
+            const startVal = value[0]
+            if (typeof startVal === 'number') {
+              dateValue = startVal
+            } else if (startVal) {
+              const dateStr = String(startVal)
+              const parsed = new Date(dateStr + 'T00:00:00')
+              dateValue = isNaN(parsed.getTime()) ? null : parsed.getTime()
+            }
+          } else if (prop === 'end') {
+            const endVal = value[1]
+            if (typeof endVal === 'number') {
+              dateValue = endVal
+            } else if (endVal) {
+              const dateStr = String(endVal)
+              const parsed = new Date(dateStr + 'T00:00:00')
+              dateValue = isNaN(parsed.getTime()) ? null : parsed.getTime()
+            }
+          }
+          return dateValue !== null ? `new Date(${dateValue})` : 'null'
+        }
+      }
+      return 'null'
     })
 
-    // 简单示例：只处理基本运算
-    try {
-      // 注意：实际生产环境应该使用安全的表达式计算库
+    expression = expression.replace(/\$\{(\w+)\.(\w+)\}/g, (match, fieldId, prop) => {
+      const value = context[fieldId]
+      
+      if (value === null || value === undefined) {
+        return 'null'
+      }
+      
+      if (Array.isArray(value)) {
+        if (value.length >= 2) {
+          let dateValue: number | null = null
+          if (prop === 'start') {
+            const startVal = value[0]
+            if (typeof startVal === 'number') {
+              dateValue = startVal
+            } else if (startVal) {
+              const dateStr = String(startVal)
+              const parsed = new Date(dateStr + 'T00:00:00')
+              dateValue = isNaN(parsed.getTime()) ? null : parsed.getTime()
+            }
+          } else if (prop === 'end') {
+            const endVal = value[1]
+            if (typeof endVal === 'number') {
+              dateValue = endVal
+            } else if (endVal) {
+              const dateStr = String(endVal)
+              const parsed = new Date(dateStr + 'T00:00:00')
+              dateValue = isNaN(parsed.getTime()) ? null : parsed.getTime()
+            }
+          }
+          return dateValue !== null ? `new Date(${dateValue})` : 'null'
+        }
+      }
+      return 'null'
+    })
 
-      return eval(expression)
-    } catch {
+    expression = expression.replace(/\$\{(\w+)\}/g, (match, fieldId) => {
+      const value = context[fieldId]
+      if (value === null || value === undefined) return 'null'
+      if (typeof value === 'number') return String(value)
+      if (typeof value === 'string') return `"${value}"`
+      if (Array.isArray(value)) return JSON.stringify(value)
+      return String(value)
+    })
+
+    const diffDays = (end: Date | null, start: Date | null): number => {
+      if (!end || !start) {
+        return 0
+      }
+      const diffTime = end.getTime() - start.getTime()
+      const days = Math.round(diffTime / (1000 * 60 * 60 * 24))
+      return days
+    }
+
+    const diffHours = (end: Date | null, start: Date | null): number => {
+      if (!end || !start) return 0
+      return (end.getTime() - start.getTime()) / (1000 * 60 * 60)
+    }
+
+    const today = () => new Date()
+    const now = () => new Date()
+    const abs = Math.abs
+    const round = Math.round
+    const min = Math.min
+    const max = Math.max
+    const sum = (...args: number[]) => args.reduce((a, b) => a + b, 0)
+    const avg = (...args: number[]) => args.length > 0 ? sum(...args) / args.length : 0
+    const floor = Math.floor
+    const ceil = Math.ceil
+    const concat = (...args: unknown[]) => args.join('')
+    const length = (s: string) => s?.length || 0
+    const upper = (s: string) => s?.toUpperCase() || ''
+    const lower = (s: string) => s?.toLowerCase() || ''
+    const trim = (s: string) => s?.trim() || ''
+
+    try {
+      const fn = new Function(
+        'diffDays', 'diffHours', 'today', 'now', 
+        'abs', 'round', 'min', 'max', 'sum', 'avg', 'floor', 'ceil',
+        'concat', 'length', 'upper', 'lower', 'trim',
+        `return ${expression}`
+      )
+      const result = fn(diffDays, diffHours, today, now, abs, round, min, max, sum, avg, floor, ceil, concat, length, upper, lower, trim)
+      return result
+    } catch (error) {
+      console.error('Formula evaluation error:', error, 'Expression:', expression)
       return null
     }
   }
 
-  // 提交
+  const applyLogicRules = () => {
+    const logicSchema = props.config?.logicSchema
+    if (!logicSchema?.rules || !Array.isArray(logicSchema.rules)) {
+      return
+    }
+
+    logicSchema.rules.forEach((rule: LogicRule) => {
+      if (rule.enabled === false) return
+
+      const conditionMet = evaluateCondition(rule)
+      
+      const actions = rule.actions || []
+      actions.forEach((action: { type?: string; target?: string; value?: unknown }) => {
+        const targetField = action.target
+        if (!targetField) return
+
+        const actionType = action.type as string
+        switch (actionType) {
+          case 'visible':
+          case 'show':
+            if (conditionMet) {
+              fieldVisibility[targetField] = true
+            } else {
+              fieldVisibility[targetField] = false
+            }
+            break
+          case 'hidden':
+          case 'hide':
+            if (conditionMet) {
+              fieldVisibility[targetField] = false
+            } else {
+              fieldVisibility[targetField] = true
+            }
+            break
+          case 'required':
+            if (conditionMet) {
+              fieldRequired[targetField] = true
+            }
+            break
+          case 'optional':
+            if (conditionMet) {
+              fieldRequired[targetField] = false
+            }
+            break
+          case 'set_value':
+          case 'setValue':
+            if (conditionMet && action.value !== undefined) {
+              formData[targetField] = action.value
+            }
+            break
+          case 'clear_value':
+          case 'clearValue':
+            if (conditionMet) {
+              formData[targetField] = null
+            }
+            break
+        }
+      })
+    })
+  }
+
+  const evaluateCondition = (rule: LogicRule): boolean => {
+    const conditionStr = rule.condition
+    if (!conditionStr) return false
+
+    try {
+      let expression = conditionStr
+      
+      expression = expression.replace(/\$\{(\w+)\}/g, (match, fieldId) => {
+        const value = formData[fieldId]
+        if (value === null || value === undefined) return 'null'
+        if (typeof value === 'number') return String(value)
+        if (typeof value === 'string') return `"${value}"`
+        return String(value)
+      })
+
+      const fn = new Function(`return ${expression}`)
+      return !!fn()
+    } catch (error) {
+      console.error('Condition evaluation error:', error)
+      return false
+    }
+  }
+
   const handleSubmit = async () => {
     try {
       await formRef.value?.validate()
-      emit('submit', { ...formData })
+      
+      const submitData: FormValues = {}
+      Object.keys(formData).forEach(key => {
+        const value = formData[key]
+        if (value !== null && value !== undefined) {
+          submitData[key] = value
+        }
+      })
+      
+      emit('submit', submitData)
     } catch (error) {
       message.error(resolveErrorMessage(error, '请检查表单填写'))
     }
   }
 
-  // 重置
   const handleReset = () => {
-    formRef.value?.restoreValidation()
-    Object.keys(formData).forEach(key => {
-      delete formData[key]
-    })
-    initFormData()
+    try {
+      formRef.value?.restoreValidation()
+      
+      Object.keys(formData).forEach(key => {
+        formData[key] = null
+      })
+      
+      Object.keys(fieldVisibility).forEach(key => {
+        fieldVisibility[key] = true
+      })
+      
+      Object.keys(fieldRequired).forEach(key => {
+        const field = props.config?.formSchema?.fields?.find(f => f.id === key)
+        fieldRequired[key] = field?.required || false
+      })
+      
+      initFormData()
+      message.success('表单已重置')
+    } catch (error) {
+      message.error(resolveErrorMessage(error, '重置失败'))
+    }
   }
   
-  onMounted(() => {
-    initFormData()
-  })
+    // 监听 config 变化，重新初始化表单数据（用于编辑模式加载历史数据）
+    watch(
+      () => ({
+        fields: props.config?.formSchema?.fields,
+        attachments: props.config?.attachments
+      }),
+      (newVal, oldVal) => {
+        if (newVal.fields) {
+          const fieldsChanged = newVal.fields !== oldVal?.fields
+          const attachmentsChanged = newVal.attachments !== oldVal?.attachments
+          if (fieldsChanged || attachmentsChanged || !oldVal) {
+            initFormData()
+          }
+        }
+      },
+      { deep: true, immediate: true }
+    )
   </script>
   
   <style scoped lang="scss">
@@ -289,5 +826,34 @@
     font-size: 14px;
     color: #6b7280;
     line-height: 1.6;
+  }
+
+  .uploaded-file-item {
+    display: flex;
+    align-items: center;
+  }
+
+  .image-preview-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+
+  .file-preview-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f9fafb;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+
+  .delete-btn {
+    flex-shrink: 0;
   }
   </style>

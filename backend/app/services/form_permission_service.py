@@ -95,7 +95,7 @@ class FormPermissionService:
     def update_permission(
         permission_id: int,
         tenant_id: int,
-        request: FormPermissionUpdateRequest,
+        update_data: dict,
         db: Session,
     ) -> FormPermission:
         """更新表单权限的有效期。
@@ -105,10 +105,10 @@ class FormPermissionService:
 
         permission = FormPermissionService._get_permission(permission_id, tenant_id, db)
 
-        if request.valid_from is not None:
-            permission.valid_from = request.valid_from
-        if request.valid_to is not None:
-            permission.valid_to = request.valid_to
+        if "valid_from" in update_data:
+            permission.valid_from = update_data["valid_from"]
+        if "valid_to" in update_data:
+            permission.valid_to = update_data["valid_to"]
 
         db.commit()
         db.refresh(permission)
@@ -136,6 +136,11 @@ class FormPermissionService:
     ) -> bool:
         """判断用户是否拥有指定表单权限。
 
+        权限优先级：
+        1. 管理员拥有所有权限
+        2. 表单创建者拥有所有权限
+        3. 显式授予的权限
+
         Time: O(N), Space: O(N)
         """
 
@@ -150,6 +155,10 @@ class FormPermissionService:
         if not user:
             return False
 
+        # 检查是否是管理员
+        if FormPermissionService._is_admin(user_id, tenant_id, db):
+            return True
+
         if allow_owner and FormPermissionService._is_form_owner(form_id, tenant_id, user_id, db):
             return True
 
@@ -160,7 +169,7 @@ class FormPermissionService:
                 FormPermission.form_id == form_id,
                 FormPermission.tenant_id == tenant_id,
                 FormPermission.permission == permission.value,
-                
+
                 (FormPermission.valid_from.is_(None) | (FormPermission.valid_from <= now)),
                 (FormPermission.valid_to.is_(None) | (FormPermission.valid_to >= now)),
             )
@@ -287,6 +296,42 @@ class FormPermissionService:
         return overview
 
     # -------------------- 辅助方法 --------------------
+    @staticmethod
+    def _is_admin(user_id: int, tenant_id: int, db: Session) -> bool:
+        """判断是否为管理员。
+
+        检查用户是否拥有名为"管理员"的角色。
+
+        Time: O(N), Space: O(N)
+        """
+        from app.models.user import Role
+
+        # 查询用户是否有关联的管理员角色
+        admin_role = (
+            db.query(Role)
+            .filter(
+                Role.tenant_id == tenant_id,
+                Role.name == "管理员"
+            )
+            .first()
+        )
+
+        if not admin_role:
+            return False
+
+        # 检查用户是否拥有该角色
+        user_role = (
+            db.query(UserRole)
+            .filter(
+                UserRole.user_id == user_id,
+                UserRole.role_id == admin_role.id,
+                UserRole.tenant_id == tenant_id
+            )
+            .first()
+        )
+
+        return user_role is not None
+
     @staticmethod
     def _get_permission(permission_id: int, tenant_id: int, db: Session) -> FormPermission:
         """根据ID获取权限记录。

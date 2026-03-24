@@ -81,6 +81,53 @@ export const getCurrentUser = (): Promise<Response<UserInfo>> => {
 }
 
 /**
+ * 获取当前用户统计信息
+ * GET /api/v1/users/me/stats
+ * 
+ * @returns 用户统计信息
+ */
+export const getCurrentUserStats = (): Promise<Response<{
+  forms_created: number
+  forms_submitted: number
+  tasks_pending: number
+  tasks_completed: number
+}>> => {
+  return request.get('/api/v1/users/me/stats')
+}
+
+/**
+ * 更新用户信息
+ * PUT /api/v1/users/{user_id}
+ * 
+ * @param userId 用户ID
+ * @param data 更新数据
+ * @returns 更新后的用户信息
+ */
+export const updateUser = (userId: number, data: {
+  name?: string
+  email?: string
+  phone?: string
+  avatar_url?: string
+}): Promise<Response<any>> => {
+  return request.put(`/api/v1/users/${userId}`, data)
+}
+
+/**
+ * 修改密码
+ * POST /api/v1/users/{user_id}/change-password
+ * 
+ * @param userId 用户ID
+ * @param data 密码修改数据
+ * @returns 修改结果
+ */
+export const changePassword = (userId: number, data: {
+  old_password: string
+  new_password: string
+}): Promise<Response<{ success: boolean }>> => {
+  return request.post(`/api/v1/users/${userId}/change-password`, data)
+}
+
+/**
  * 获取租户列表
  * GET /api/v1/auth/tenants
  * 
@@ -118,6 +165,7 @@ export default {
   register,
   logout,
   getCurrentUser,
+  getCurrentUserStats,
   getTenants,
   validateTenant,
   validateTenantById, // 便捷方法

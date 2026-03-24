@@ -4,84 +4,73 @@
 记录请求和响应信息
 """
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 import time
 import uuid
 import logging
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
 
-class LoggingMiddleware(BaseHTTPMiddleware):
+class LoggingMiddleware:
     """
-    请求日志中间件
-    记录每个请求的详细信息
+    请求日志中间件 - 使用纯 ASGI 实现
     """
 
     def __init__(self, app: ASGIApp):
-        super().__init__(app)
+        self.app = app
 
-    async def dispatch(
-            self,
-            request: Request,
-            call_next: Callable
-    ) -> Response:
-        """
-        处理请求和响应
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Args:
-            request: 请求对象
-            call_next: 下一个中间件或路由处理器
+        if "state" not in scope:
+            scope["state"] = {}
 
-        Returns:
-            响应对象
-        """
-        # 生成请求ID
         request_id = str(uuid.uuid4())
-        request.state.request_id = request_id
+        scope["state"]["request_id"] = request_id
 
-        # 记录请求开始时间
         start_time = time.time()
 
-        # 记录请求信息
         logger.info(
             f"请求开始",
             extra={
                 "request_id": request_id,
-                "method": request.method,
-                "url": str(request.url),
-                "ip": request.client.host if request.client else None,
-                "user_agent": request.headers.get("user-agent")
+                "method": scope["method"],
+                "url": str(scope.get("path", "")),
+                "ip": scope.get("client", [""])[0] if scope.get("client") else None,
             }
         )
 
-        # 处理请求
-        try:
-            response = await call_next(request)
+        response_started = False
+        status_code = None
 
-            # 计算处理时间
+        async def send_wrapper(message):
+            nonlocal response_started, status_code
+            if message["type"] == "http.response.start":
+                response_started = True
+                status_code = message["status"]
+                headers = list(message.get("headers", []))
+                headers.append((b"X-Request-ID", request_id.encode()))
+                message["headers"] = headers
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+
             process_time = time.time() - start_time
 
-            # 添加响应头
-            response.headers["X-Request-ID"] = request_id
-            response.headers["X-Process-Time"] = str(process_time)
-
-            # 记录响应信息
             logger.info(
                 f"请求完成",
                 extra={
                     "request_id": request_id,
-                    "status_code": response.status_code,
+                    "status_code": status_code,
                     "process_time": process_time
                 }
             )
 
-            return response
-
         except Exception as e:
-            # 记录异常
             process_time = time.time() - start_time
 
             logger.error(

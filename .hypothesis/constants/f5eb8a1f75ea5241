@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\utils\audit.py
+# hypothesis_version: 6.151.9
+
+['_', '__dict__', 'body', 'client', 'current_tenant_id', 'current_user', 'data', 'db', 'error', 'headers', 'id', 'method', 'result', 'tenant_id', 'to_dict', 'url', 'user', 'user-agent', 'utf-8']

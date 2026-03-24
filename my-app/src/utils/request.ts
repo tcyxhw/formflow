@@ -164,8 +164,8 @@ const requestQueue = new RequestQueue()
 
 // 创建axios实例
 const service: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
-  timeout: 180000,
+  baseURL: '',  // 使用空字符串，让Vite代理处理/api路径
+  timeout: 10000,  // 10秒超时，快速反馈网络问题
   headers: {
     'Content-Type': 'application/json',
   },
@@ -180,7 +180,11 @@ service.interceptors.request.use(
     }
     
     // 添加到请求队列（防重复请求）
-    requestQueue.add(config)
+    // 跳过附件下载请求，因为多个图片可能同时加载
+    const isAttachmentDownload = config.url?.includes('/attachments/') && config.url?.includes('/download')
+    if (!isAttachmentDownload) {
+      requestQueue.add(config)
+    }
     
     // 获取认证store
     const authStore = useAuthStore()
@@ -240,8 +244,8 @@ service.interceptors.response.use(
     
     // 处理业务层面的错误（使用四位数错误码）
     if (res.code !== ERROR_CODES.SUCCESS) {
-      // 根据错误类型进行不同处理
-      await handleBusinessError(res, config, authStore)
+      // 根据错误类型进行不同处理（不要await，避免阻塞）
+      handleBusinessError(res, config, authStore)
       
       return Promise.reject(new Error(res.message || '操作失败'))
     }
@@ -274,8 +278,8 @@ service.interceptors.response.use(
       return service(config)
     }
     
-    // 处理网络错误和其他异常
-    await handleNetworkError(error, config)
+    // 处理网络错误和其他异常（不要await，避免阻塞）
+    handleNetworkError(error, config)
     
     return Promise.reject(error)
   }
@@ -304,8 +308,8 @@ async function handleBusinessError(
   
   // 根据错误码进行特殊处理
   if (AUTH_ERROR_CODES.includes(code)) {
-    // 认证错误：清除状态并跳转登录页
-    await handleAuthError(config, authStore, message)
+    // 认证错误：清除状态并跳转登录页（不要await，避免阻塞）
+    handleAuthError(config, authStore, message)
     
   } else if (PERMISSION_ERROR_CODES.includes(code)) {
     // 权限错误：只显示消息，不跳转
@@ -328,7 +332,7 @@ async function handleBusinessError(
 /**
  * 处理认证错误
  */
-async function handleAuthError(
+function handleAuthError(
   config: CustomAxiosRequestConfig,
   authStore: ReturnType<typeof useAuthStore>,
   message: string
@@ -340,17 +344,18 @@ async function handleAuthError(
   }
   
   // 其他接口的认证错误，需要跳转到登录页
-  await showConfirm({
+  // 不要await，避免阻塞响应处理
+  showConfirm({
     title: '认证过期',
     content: message || '登录状态已过期，请重新登录',
     positiveText: '重新登录',
     negativeText: '取消',
     type: 'warning'
+  }).then(() => {
+    // 无论用户是否确认，都清除认证状态并跳转
+    authStore.clearAuth()
+    router.push('/login')
   })
-  
-  // 无论用户是否确认，都清除认证状态并跳转
-  authStore.clearAuth()
-  router.push('/login')
 }
 
 // src/utils/request.ts
@@ -358,25 +363,39 @@ async function handleAuthError(
 /**
  * 处理网络错误
  */
-async function handleNetworkError(
+function handleNetworkError(
   error: AxiosError<ApiErrorBody>,
   config: CustomAxiosRequestConfig
 ) {
   if (config?.skipErrorHandler) {
     return
   }
-  
+
   let errorMessage = '网络错误'
-  
+
   // ✅ 优先检查响应数据（正常的 HTTP 错误）
   if (error.response?.data) {
     // 后端返回了错误信息
-    errorMessage = error.response.data.message || error.response.data.detail || '请求失败'
-    
+    const res = error.response.data
+
+    // ✅ 特殊处理 422 验证错误
+    if (error.response.status === 422) {
+      const data = res.data as BusinessErrorData | undefined
+      if (data?.errors && Array.isArray(data.errors)) {
+        const errorDetails = data.errors.join('; ')
+        showMessage('error', `参数验证失败: ${errorDetails}`)
+      } else {
+        showMessage('error', res.message || '请求参数验证失败')
+      }
+      return
+    }
+
+    errorMessage = res.message || res.detail || '请求失败'
+
     // ✅ 特殊处理 401 错误
     if (error.response.status === 401) {
       const authStore = useAuthStore()
-      
+
       // 检查是否是登录接口
       if (!config.url?.includes('/login')) {
         // 非登录接口的 401 错误，清除认证状态并跳转
@@ -386,28 +405,15 @@ async function handleNetworkError(
         return
       }
     }
-    
+
   } else if (error.code) {
     // ✅ 网络层错误或 CORS 错误
     switch (error.code) {
       case 'NETWORK_ERROR':
       case 'ERR_NETWORK':
-        // ✅ 特殊处理：ERR_NETWORK 可能是 CORS 导致的认证错误
-        // 如果请求包含了认证头，很可能是令牌过期导致的 401 被 CORS 拦截
-        if (config.headers?.Authorization) {
-          console.warn('网络错误可能是由于认证失败导致的 CORS 拦截')
-          errorMessage = '认证已过期，请重新登录'
-          
-          // 清除认证状态并跳转（除非是登录接口）
-          if (!config.url?.includes('/login')) {
-            const authStore = useAuthStore()
-            authStore.clearAuth()
-            router.push('/login')
-            return
-          }
-        } else {
-          errorMessage = '网络连接失败，请检查网络设置'
-        }
+        // 网络连接失败，不要自动清除认证状态
+        // 因为这可能只是临时的网络问题，而不是认证过期
+        errorMessage = '网络连接失败，请检查网络设置或稍后重试'
         break
       
       case 'TIMEOUT':

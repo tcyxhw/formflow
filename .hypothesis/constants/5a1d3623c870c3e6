@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\config.py
+# hypothesis_version: 6.151.9
+
+[0.7, 120, 1000, 1024, 3600, 4096, 5432, 6379, '.doc', '.docx', '.env', '.jpeg', '.jpg', '.pdf', '.png', '.xls', '.xlsx', '.zip', '/api/v1', '1.0.0', '13579qwe', 'FormFlow', 'HS256', 'INFO', 'activity', 'department', 'dict_item', 'disabled', 'form', 'formflow', 'formflow-public', 'glm-4.5-flash', 'localhost', 'localhost:9000', 'logs', 'minio', 'minioadmin', 'minioadmin123', 'notification_log', 'position', 'postgres', 'resource', 'role', 'submission', 'temp/exports', 'uploads', 'user']

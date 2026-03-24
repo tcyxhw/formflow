@@ -13,7 +13,8 @@ class UserBase(BaseSchema):
     account: str = Field(..., min_length=3, max_length=50, description="登录账号")
     name: str = Field(..., min_length=2, max_length=50, description="真实姓名")
     email: Optional[EmailStr] = Field(None, description="邮箱")
-    phone: Optional[str] = Field(None, pattern=r"^1[3-9]\d{9}$", description="手机号")  # 改为 pattern
+    phone: Optional[str] = Field(None, pattern=r"^1[3-9]\d{9}$", description="手机号")
+    avatar_url: Optional[str] = Field(None, max_length=500, description="头像URL")
     department_id: Optional[int] = Field(None, description="部门ID")
 
 
@@ -38,7 +39,8 @@ class UserUpdate(BaseSchema):
     """更新用户"""
     name: Optional[str] = Field(None, min_length=2, max_length=50)
     email: Optional[EmailStr] = None
-    phone: Optional[str] = Field(None, pattern=r"^1[3-9]\d{9}$")  # 改为 pattern
+    phone: Optional[str] = Field(None, pattern=r"^1[3-9]\d{9}$")
+    avatar_url: Optional[str] = Field(None, max_length=500, description="头像URL")
     department_id: Optional[int] = None
     is_active: Optional[bool] = None
 

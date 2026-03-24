@@ -48,6 +48,17 @@
             权限
           </n-button>
 
+          <n-button 
+            v-if="designerStore.formId"
+            tertiary 
+            @click="handleConfigureFlow"
+          >
+            <template #icon>
+              <n-icon><Icon icon="carbon:flow" /></n-icon>
+            </template>
+            配置审批流程
+          </n-button>
+
           <n-button @click="handleSave" :loading="saving">
             <template #icon>
               <n-icon><Icon icon="carbon:save" /></n-icon>
@@ -257,6 +268,37 @@ const handlePreview = () => {
   showPreview.value = true
 }
 
+const handleConfigureFlow = async () => {
+  if (!designerStore.formId) {
+    message.warning('请先保存表单')
+    return
+  }
+
+  try {
+    // 先保存表单
+    await handleSave()
+
+    // 获取或创建流程定义
+    const res = await formApi.getOrCreateFlowDefinition(designerStore.formId)
+    const flowDefinitionId = res.data?.flow_definition_id
+
+    if (!flowDefinitionId) {
+      message.error('无法获取流程定义')
+      return
+    }
+
+    // 保存流程定义ID到设计器状态
+    designerStore.flowDefinitionId = flowDefinitionId
+
+    // 导航到流程配置器
+    router.push({
+      path: `/flow/configurator/${flowDefinitionId}`,
+    })
+  } catch (error) {
+    message.error(resolveErrorMessage(error, '配置审批流程失败'))
+  }
+}
+
 const openPermissionDrawer = () => {
   showPermissionDrawer.value = true
 }
@@ -330,7 +372,7 @@ const handlePublish = async () => {
       onPositiveClick: async () => {
         publishing.value = true
         try {
-          await formApi.publishForm(designerStore.formId!)
+          await formApi.publishForm(designerStore.formId!, designerStore.flowDefinitionId)
           formStatus.value = FormStatus.PUBLISHED
           message.success('发布成功')
         } catch (error) {

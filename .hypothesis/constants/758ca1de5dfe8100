@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\form_service.py
+# hypothesis_version: 6.151.9
+
+[409, 'calculated', 'current_version', 'fields', 'flow_definitions', 'form_id', 'form_name', 'id', 'label', 'name', 'total_submissions', 'total_versions', 'type', 'version', '只有创建者可以删除表单', '只有创建者可以发布表单', '只有创建者可以取消发布', '只有创建者可以归档表单', '只有创建者可以编辑表单', '字段ID必须唯一', '字段必须有ID', '已有提交记录的表单不能取消发布，建议归档', '指定的分类不存在', '指定的流程定义不存在', '数据库操作失败，请稍后重试', '检测到计算字段循环依赖', '表单关联的流程定义不存在', '表单发布前必须先配置并发布审批流程', '表单未发布', '表单至少需要一个字段', '表单配置不完整，无法发布', '表单配置不能为空']

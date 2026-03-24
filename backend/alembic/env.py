@@ -17,10 +17,7 @@ from app.core.database import Base
 from app.config import settings
 
 # 导入所有模型，确保它们被注册
-from app.models import (
-    user, department, form, workflow,
-    activity, resource, notification
-)
+from app.models import *
 
 # Alembic配置对象
 config = context.config

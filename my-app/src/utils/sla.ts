@@ -56,22 +56,35 @@ export const slaTagByLevel = (level?: string | null, minutes?: number | null): T
   }
 }
 
-export const formatProcessState = (state?: string | null): string => {
-  if (!state) return '进行中'
+/**
+ * 流程状态说明：
+ * - running: 进行中 - 审批未到达结束节点且未超时
+ * - finished: 已完成 - 到达结束节点
+ * - stopped: 已停止 - 未完成并超时
+ */
+export const formatProcessState = (state?: string | null, isOverdue?: boolean): string => {
+  if (!state) {
+    // 没有状态时，根据是否超时判断
+    return isOverdue ? '已停止' : '进行中'
+  }
   switch (state) {
     case 'finished':
       return '已完成'
+    case 'stopped':
     case 'canceled':
-      return '已终止'
+      return '已停止'
     case 'running':
     default:
-      return '进行中'
+      // running 状态下，如果超时了也显示已停止
+      return isOverdue ? '已停止' : '进行中'
   }
 }
 
-export const processStateTag = (state?: string | null): TagType => {
-  if (!state || state === 'running') return 'info'
+export const processStateTag = (state?: string | null, isOverdue?: boolean): TagType => {
+  if (!state || state === 'running') {
+    return isOverdue ? 'error' : 'info'
+  }
   if (state === 'finished') return 'success'
-  if (state === 'canceled') return 'warning'
+  if (state === 'stopped' || state === 'canceled') return 'error'
   return 'default'
 }

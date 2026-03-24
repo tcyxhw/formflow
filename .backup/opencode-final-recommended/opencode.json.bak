@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "standards/00_ai_digest.md",
+    "standards/01_principles.md",
+    "standards/02_decision_matrix.md"
+  ],
+  "default_agent": "build",
+  "permission": {
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "grep *": "allow",
+      "find *": "allow",
+      "sed *": "allow",
+      "cat *": "allow",
+      "ls *": "allow"
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
+  "watcher": {
+    "ignore": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**",
+      ".venv/**",
+      "__pycache__/**"
+    ]
+  }
+}

@@ -70,7 +70,7 @@ API端点和功能:
 - 依赖: AuthService (核心业务逻辑)
 - 被依赖: 前端应用, 其他微服务
 """
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.response import success_response, error_response
@@ -101,6 +101,7 @@ router = APIRouter()
 async def login(
         login_request: LoginRequest,  # 🔧 改名避免混淆
         request: Request,  # 🔧 添加 FastAPI Request 对象
+        background_tasks: BackgroundTasks,  # ✅ 添加后台任务支持
         db: Session = Depends(get_db)
 ):
     """
@@ -221,6 +222,8 @@ async def get_current_user_info(
         db: Session = Depends(get_db)
 ):
     """获取当前登录用户信息"""
+    from sqlalchemy import select
+    
     # 基本用户信息
     user_data = {
         "id": current_user.id,
@@ -228,34 +231,25 @@ async def get_current_user_info(
         "name": current_user.name,
         "email": current_user.email,
         "phone": current_user.phone,
+        "avatar_url": current_user.avatar_url,
         "department_id": current_user.department_id,
         "tenant_id": current_user.tenant_id,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at
     }
 
-    # ✅ 修复：手动查询用户角色
-    user_roles = db.query(UserRole, Role) \
-        .join(Role, UserRole.role_id == Role.id) \
-        .filter(UserRole.user_id == current_user.id) \
-        .all()
-
+    # 查询用户角色
+    user_roles = db.query(UserRole, Role).join(Role, UserRole.role_id == Role.id).filter(UserRole.user_id == current_user.id).all()
     roles = [role.name for _, role in user_roles]
     user_data["roles"] = roles
 
-    # ✅ 修复：手动查询用户岗位
-    user_positions = db.query(UserPosition, Position) \
-        .join(Position, UserPosition.position_id == Position.id) \
-        .filter(UserPosition.user_id == current_user.id) \
-        .all()
-
+    # 查询用户岗位
+    user_positions = db.query(UserPosition, Position).join(Position, UserPosition.position_id == Position.id).filter(UserPosition.user_id == current_user.id).all()
     positions = [position.name for _, position in user_positions]
     user_data["positions"] = positions
 
-    # ✅ 添加：获取用户扩展信息
-    user_profile = db.query(UserProfile) \
-        .filter(UserProfile.user_id == current_user.id) \
-        .first()
+    # 获取用户扩展信息
+    user_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
 
     if user_profile:
         user_data["profile"] = {
@@ -269,11 +263,9 @@ async def get_current_user_info(
             "office": user_profile.office
         }
 
-    # ✅ 添加：获取部门信息
+    # 获取部门信息
     if current_user.department_id:
-        department = db.query(Department) \
-            .filter(Department.id == current_user.department_id) \
-            .first()
+        department = db.query(Department).filter(Department.id == current_user.department_id).first()
 
         if department:
             user_data["department"] = {
@@ -310,6 +302,8 @@ async def get_tenants(
     时间复杂度: O(n) where n is number of tenants
     空间复杂度: O(n)
     """
+    from sqlalchemy import select
+    
     try:
         # 尝试从缓存获取
         from app.core.redis_client import redis_client
@@ -373,6 +367,8 @@ async def validate_tenant(
     - 前端初始化时验证localStorage中的tenant_id
     - 防止租户被删除后前端仍使用旧的tenant_id
     """
+    from sqlalchemy import select
+    
     try:
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
 

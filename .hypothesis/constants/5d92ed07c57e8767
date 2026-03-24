@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\schemas\flow_schemas.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1.0, 100, 500, 720, 999, '!', '!=', '<', '<=', '==', '>', '>=', 'JsonLogic 表达式不能为空', 'SLA 小时数', 'all', 'and', 'any', 'auto', 'auto_sample_ratio', 'department', 'end', 'exclusive', 'expr', 'group', 'if', 'in', 'missing', 'missing_some', 'or', 'parallel', 'percent', 'percent 策略阈值', 'position', 'role', 'start', 'user', 'var', '乐观锁版本', '会签策略', '前端临时 ID，用于连线映射', '前端画布坐标数据', '发布版本号，例如 v1.0.0', '发布说明', '当前生效快照版本', '所属流程 ID', '扩展元数据', '抽检比例', '指派参数', '指派类型', '是否为默认路由', '是否允许代理', '是否开启自动审批', '最后更新时间', '最后编辑人', '最近同步快照 ID', '来源节点 Key 或 ID', '流程 ID', '目标节点 Key 或 ID', '自动通过条件', '自动驳回条件', '节点 ID，未保存时为空', '节点名称', '节点类型', '节点配置列表', '草稿版本，用于乐观锁判断', '路由 ID', '路由优先级', '路由条件', '路由模式', '路由配置列表']

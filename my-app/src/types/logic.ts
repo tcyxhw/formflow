@@ -7,8 +7,9 @@ export interface LogicRule {
     name?: string
     enabled: boolean
     trigger: LogicTrigger
-    conditions: LogicCondition[]
-    conditionLogic: 'AND' | 'OR'
+    conditions?: LogicCondition[]
+    conditionLogic?: 'AND' | 'OR'
+    condition?: string
     actions: LogicAction[]
   }
   
@@ -48,10 +49,14 @@ export interface LogicRule {
   export enum ActionType {
     SHOW = 'show',
     HIDE = 'hide',
+    VISIBLE = 'visible',
+    HIDDEN = 'hidden',
     ENABLE = 'enable',
     DISABLE = 'disable',
     SET_REQUIRED = 'setRequired',
     SET_OPTIONAL = 'setOptional',
+    REQUIRED = 'required',
+    OPTIONAL = 'optional',
     SET_VALUE = 'setValue',
     CLEAR_VALUE = 'clearValue',
   }

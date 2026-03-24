@@ -16,6 +16,63 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _background_create_audit_log(
+    action: str,
+    resource_type: str,
+    resource_id: Optional[int],
+    before_data: Optional[dict],
+    after_data: Optional[dict],
+    tenant_id: Optional[int],
+    actor_user_id: Optional[int],
+    ip: Optional[str],
+    ua: Optional[str]
+) -> None:
+    """
+    在后台任务中创建审计日志（使用独立的同步会话）
+    
+    这个函数在 FastAPI 的后台任务中执行，不会阻塞主请求流程
+    """
+    db = None
+    try:
+        # 创建独立的数据库会话
+        db = SessionLocal()
+        
+        # 如果 tenant_id 为 None，使用默认值
+        if tenant_id is None:
+            tenant_id = 0
+            logger.warning(f"审计日志缺少 tenant_id，使用默认值 0: {action}")
+        
+        # 序列化 JSON 数据
+        before_json = json.dumps(before_data, ensure_ascii=False) if before_data else None
+        after_json = json.dumps(after_data, ensure_ascii=False) if after_data else None
+        
+        # 创建审计日志记录
+        audit = AuditLog(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            before_json=before_json,
+            after_json=after_json,
+            ip=ip,
+            ua=ua
+        )
+        
+        db.add(audit)
+        db.commit()
+        
+        logger.info(f"后台任务：审计日志创建成功 - {action}")
+        
+    except Exception as e:
+        logger.error(f"后台任务：审计日志记录失败 - {action}: {str(e)}")
+        if db:
+            db.rollback()
+    finally:
+        if db:
+            db.close()
+
+
 def audit_log(
         action: str,
         resource_type: str,
@@ -47,6 +104,9 @@ def audit_log(
                 if hasattr(value, 'method') and hasattr(value, 'url'):
                     http_request = value
                     break
+
+            # ✅ 获取 BackgroundTasks 对象
+            background_tasks = kwargs.get('background_tasks')
 
             db = kwargs.get('db')
 
@@ -112,18 +172,34 @@ def audit_log(
                         if not audit_tenant_id:
                             audit_tenant_id = user_info.get('tenant_id')
 
-                # ✅ 创建审计日志
-                await create_audit_log(
-                    action=action,
-                    resource_type=resource_type,
-                    resource_id=resource_id or audit_user_id,
-                    before_data=before_data,
-                    after_data=after_data,
-                    tenant_id=audit_tenant_id,
-                    actor_user_id=audit_user_id,
-                    request=http_request,
-                    db=db
-                )
+                # ✅ 获取请求信息
+                ip = None
+                ua = None
+                if http_request:
+                    if hasattr(http_request, 'client') and http_request.client:
+                        ip = http_request.client.host
+                    if hasattr(http_request, 'headers'):
+                        ua = http_request.headers.get("user-agent")
+
+                # ✅ 使用后台任务创建审计日志
+                if background_tasks:
+                    # 将审计日志记录添加到后台任务
+                    background_tasks.add_task(
+                        _background_create_audit_log,
+                        action=action,
+                        resource_type=resource_type,
+                        resource_id=resource_id or audit_user_id,
+                        before_data=before_data,
+                        after_data=after_data,
+                        tenant_id=audit_tenant_id,
+                        actor_user_id=audit_user_id,
+                        ip=ip,
+                        ua=ua
+                    )
+                    logger.debug(f"审计日志已添加到后台任务: {action}")
+                else:
+                    # 降级处理：如果没有 BackgroundTasks，记录警告并跳过
+                    logger.debug(f"审计日志装饰器未检测到 BackgroundTasks，跳过审计记录: {action}")
 
                 return result
 
@@ -140,17 +216,29 @@ def audit_log(
                     if not audit_tenant_id and http_request:
                         audit_tenant_id = getattr(http_request.state, 'tenant_id', None)
 
-                    await create_audit_log(
-                        action=f"{action}_failed",
-                        resource_type=resource_type,
-                        resource_id=resource_id,
-                        before_data=before_data,
-                        after_data={"error": str(e)},
-                        tenant_id=audit_tenant_id,
-                        actor_user_id=getattr(user, 'id', None) if user else None,
-                        request=http_request,
-                        db=db
-                    )
+                    # 获取请求信息
+                    ip = None
+                    ua = None
+                    if http_request:
+                        if hasattr(http_request, 'client') and http_request.client:
+                            ip = http_request.client.host
+                        if hasattr(http_request, 'headers'):
+                            ua = http_request.headers.get("user-agent")
+
+                    # 使用后台任务记录失败日志
+                    if background_tasks:
+                        background_tasks.add_task(
+                            _background_create_audit_log,
+                            action=f"{action}_failed",
+                            resource_type=resource_type,
+                            resource_id=resource_id,
+                            before_data=before_data,
+                            after_data={"error": str(e)},
+                            tenant_id=audit_tenant_id,
+                            actor_user_id=getattr(user, 'id', None) if user else None,
+                            ip=ip,
+                            ua=ua
+                        )
                 except Exception as audit_error:
                     logger.error(f"审计日志记录失败: {str(audit_error)}")
 

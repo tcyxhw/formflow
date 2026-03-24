@@ -187,6 +187,74 @@ RequireFormCreator = PermissionChecker(required_roles=["表单创建者"])
 RequireApprover = PermissionChecker(required_roles=["审批人"])
 
 
+# 流程配置权限检查器
+class FlowConfigurationPermissionChecker:
+    """流程配置权限检查器
+    
+    允许以下用户访问流程配置：
+    1. 系统管理员或租户管理员
+    2. 表单创建者（仅限于自己创建的表单的流程）
+    """
+
+    async def __call__(
+            self,
+            request: Request,
+            user: User = Depends(get_current_user),
+            tenant_id: int = Depends(get_current_tenant_id),
+            db: Session = Depends(get_db)
+    ) -> User:
+        """执行流程配置权限检查"""
+        from app.models.workflow import FlowDefinition
+        from app.models.form import Form
+        
+        # 获取流程定义ID（从路径参数）
+        flow_definition_id = request.path_params.get("flow_definition_id")
+        if not flow_definition_id:
+            raise AuthorizationError("缺少流程定义ID")
+        
+        try:
+            flow_definition_id = int(flow_definition_id)
+        except (ValueError, TypeError):
+            raise AuthorizationError("流程定义ID格式错误")
+        
+        # 检查用户是否是管理员
+        user_roles = db.query(Role).join(UserRole).filter(
+            UserRole.user_id == user.id,
+            UserRole.tenant_id == tenant_id
+        ).all()
+        
+        role_names = [role.name for role in user_roles]
+        is_admin = any(role in role_names for role in ["系统管理员", "租户管理员"])
+        
+        if is_admin:
+            return user
+        
+        # 如果不是管理员，检查是否是表单创建者
+        flow_definition = db.query(FlowDefinition).filter(
+            FlowDefinition.id == flow_definition_id,
+            FlowDefinition.tenant_id == tenant_id
+        ).first()
+        
+        if not flow_definition:
+            raise AuthorizationError("流程定义不存在或无权访问")
+        
+        form = db.query(Form).filter(Form.id == flow_definition.form_id).first()
+        
+        if not form:
+            raise AuthorizationError("表单不存在")
+        
+        if form.owner_user_id != user.id:
+            logger.warning(
+                f"用户 {user.id} 尝试访问非自己创建的表单 {form.id} 的流程配置"
+            )
+            raise AuthorizationError("只有表单创建者可以配置审批流程")
+        
+        return user
+
+
+RequireFlowConfiguration = FlowConfigurationPermissionChecker()
+
+
 # ✅ RateLimitChecker 保持不变
 class RateLimitChecker:
     """限流检查器"""

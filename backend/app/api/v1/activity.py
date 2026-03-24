@@ -18,6 +18,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Path, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.api.deps import get_current_user, get_current_tenant_id
 from app.core.database import get_db

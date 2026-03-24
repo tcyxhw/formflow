@@ -364,17 +364,15 @@ class SubmissionService:
         【业务流程】
         1. 查询提交记录是否存在
         2. 验证用户权限（只能编辑自己的提交）
-        3. 检查表单是否允许编辑
-        4. 检查编辑次数限制
-        5. 验证更新的数据
-        6. 计算所有计算字段
-        7. 更新提交记录
-        8. 重新绑定附件
+        3. 检查是否有关联的任务被认领（被认领后不允许编辑）
+        4. 验证更新的数据
+        5. 计算所有计算字段
+        6. 更新提交记录
+        7. 重新绑定附件
 
         【权限规则】
         - 只有提交者本人可以编辑
-        - 表单必须设置 allow_edit=True
-        - 未超过最大编辑次数限制
+        - 如果提交记录关联的任务已被审批人认领，则不允许编辑
 
         :param submission_id: 要更新的提交记录ID
         :param request: 提交更新请求对象（包含 data）
@@ -384,7 +382,7 @@ class SubmissionService:
         :return: 更新后的 Submission 对象
         :raises NotFoundError: 提交记录不存在时抛出
         :raises AuthorizationError: 无权限编辑时抛出
-        :raises BusinessError: 表单不允许编辑时抛出
+        :raises BusinessError: 任务已被认领时抛出
         :raises ValidationError: 数据验证失败时抛出
         """
         logger.info(f"开始更新提交: submission_id={submission_id}, user_id={user_id}")
@@ -401,21 +399,27 @@ class SubmissionService:
             )
             raise AuthorizationError("只能编辑自己的提交")
 
-        # 3. 获取表单
+        # 3. 检查是否有关联的任务被认领
+        from app.models.workflow import ProcessInstance, Task
+        process_instance = db.query(ProcessInstance).filter(
+            ProcessInstance.submission_id == submission_id,
+            ProcessInstance.tenant_id == tenant_id,
+            ProcessInstance.state == "running"
+        ).first()
+
+        if process_instance:
+            # 检查是否有任务被认领
+            claimed_task = db.query(Task).filter(
+                Task.process_instance_id == process_instance.id,
+                Task.claimed_by.isnot(None)
+            ).first()
+
+            if claimed_task:
+                logger.warning(f"提交记录关联的任务已被认领: submission_id={submission_id}, task_id={claimed_task.id}")
+                raise BusinessError("该提交记录已被审批人认领，不允许再编辑")
+
+        # 4. 获取表单和版本
         form = FormService.get_form_by_id(submission.form_id, tenant_id, db)
-
-        # 4. 检查是否允许编辑
-        if not form.allow_edit:
-            logger.warning(f"表单不允许编辑: form_id={form.id}")
-            raise BusinessError("该表单不允许提交后编辑")
-
-        # 5. 检查编辑次数（简化处理，实际应该记录编辑历史）
-        if form.max_edit_count > 0:
-            # TODO: 实现编辑次数限制
-            logger.debug(f"编辑次数限制: max_edit_count={form.max_edit_count}")
-            pass
-
-        # 6. 获取版本
         version = db.query(FormVersion).filter(
             FormVersion.id == submission.form_version_id
         ).first()
@@ -424,7 +428,7 @@ class SubmissionService:
             logger.error(f"表单版本不存在: version_id={submission.form_version_id}")
             raise BusinessError("表单版本不存在")
 
-        # 7. 验证数据
+        # 5. 验证数据
         is_valid, errors = SubmissionService.validate_submission_data(
             request.data,
             version.schema_json,
@@ -560,6 +564,36 @@ class SubmissionService:
         return submission
 
     @staticmethod
+    def get_latest_submission_by_user(
+            form_id: int,
+            user_id: int,
+            tenant_id: int,
+            db: Session
+    ) -> Optional[Submission]:
+        """获取当前用户对指定表单的最新提交记录。
+
+        :param form_id: 表单 ID
+        :param user_id: 用户 ID
+        :param tenant_id: 租户 ID
+        :param db: 数据库会话
+        :return: 最新的 Submission 或 None
+
+        Time: O(log N), Space: O(1)
+        """
+        submission = (
+            db.query(Submission)
+            .filter(
+                Submission.form_id == form_id,
+                Submission.submitter_user_id == user_id,
+                Submission.tenant_id == tenant_id,
+                Submission.status != SubmissionStatus.DELETED.value,
+            )
+            .order_by(Submission.created_at.desc())
+            .first()
+        )
+        return submission
+
+    @staticmethod
     def get_process_overview(
             submission_id: int,
             tenant_id: int,
@@ -608,6 +642,10 @@ class SubmissionService:
         - date_to: 结束日期（可选）
         - keyword: 关键词搜索（搜索 JSONB 字段内容，可选）
 
+        【权限规则】
+        - 管理员用户：可以看到所有提交
+        - 非管理员用户：只能看到自己提交的记录或自己创建的表单的提交记录
+
         【分页参数】
         - page: 页码（从 1 开始）
         - page_size: 每页数量
@@ -617,7 +655,7 @@ class SubmissionService:
 
         :param request: 查询请求对象（包含筛选条件和分页参数）
         :param tenant_id: 租户ID
-        :param user_id: 当前用户ID（预留参数，可用于权限过滤）
+        :param user_id: 当前用户ID（用于权限过滤）
         :param db: 数据库会话对象
         :return: (提交列表, 总记录数) 元组
         :raises Exception: 数据库查询失败时抛出
@@ -632,10 +670,24 @@ class SubmissionService:
             f"status={request.status}, page={request.page}, page_size={request.page_size}"
         )
 
-        # 基础查询条件
         query = db.query(Submission).filter(Submission.tenant_id == tenant_id)
 
-        # 1. 表单筛选
+        is_admin = FormPermissionService._is_admin(user_id, tenant_id, db) if user_id else False
+
+        if not is_admin and user_id:
+            form_ids_owned = (
+                db.query(Form.id)
+                .filter(Form.owner_user_id == user_id, Form.tenant_id == tenant_id)
+                .subquery()
+            )
+            query = query.filter(
+                or_(
+                    Submission.submitter_user_id == user_id,
+                    Submission.form_id.in_(form_ids_owned)
+                )
+            )
+            logger.debug(f"非管理员用户，添加权限过滤: user_id={user_id}")
+
         if request.form_id:
             query = query.filter(Submission.form_id == request.form_id)
             logger.debug(f"添加表单筛选: form_id={request.form_id}")
@@ -991,6 +1043,7 @@ class SubmissionService:
             "version": form_version.version,
             "published_at": form_version.published_at.isoformat() if form_version.published_at else None,
             "field_labels": {},
+            "field_types": {},
             "field_options": {},
             "calculated_formulas": {}
         }
@@ -1003,13 +1056,16 @@ class SubmissionService:
             # 1. 保存标签
             snapshot["field_labels"][field_id] = field.get("label")
 
-            # 2. 保存选项类字段的选项
+            # 2. 保存字段类型
+            snapshot["field_types"][field_id] = field.get("type")
+
+            # 3. 保存选项类字段的选项
             if field.get("type") in ["select", "radio", "checkbox"]:
                 options = field.get("props", {}).get("options", [])
                 snapshot["field_options"][field_id] = options
                 logger.debug(f"保存选项: {field_id} -> {len(options)} 个选项")
 
-            # 3. 保存计算字段公式
+            # 4. 保存计算字段公式
             if field.get("type") == "calculated":
                 formula = field.get("props", {}).get("formula")
                 if formula:

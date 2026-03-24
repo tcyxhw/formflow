@@ -1,49 +1,89 @@
 <template>
   <div class="auth-shell">
     <div class="auth-viewport">
-      <aside class="auth-showcase" aria-hidden="true">
+      <!-- Left Panel: Brand Visual -->
+      <aside class="auth-showcase" aria-hidden="true" :style="parallaxStyle">
         <div class="showcase-content">
-          <div class="showcase-visual" role="img" aria-label="AI助手形象">
-            <!-- SVG Character - 可爱极简风格 -->
-            <svg class="character-svg" viewBox="0 0 80 100" fill="none" stroke="currentColor" stroke-width="1.2">
-              <!-- 头部 - 圆润轮廓 -->
-              <ellipse cx="40" cy="26" rx="18" ry="20" class="head-shape" />
-              <!-- 眼睛 - 大眼睛更可爱 -->
-              <g class="character-eyes" :class="{ 'eyes-hidden': passwordFocused }">
-                <circle 
-                  class="eye-left" 
-                  :cx="33 + eyeOffset.leftX" 
-                  :cy="24 + eyeOffset.leftY" 
-                  r="3.5" 
-                  fill="#ff7a18" 
-                />
-                <circle 
-                  class="eye-right" 
-                  :cx="47 + eyeOffset.rightX" 
-                  :cy="24 + eyeOffset.rightY" 
-                  r="3.5" 
-                  fill="#ff7a18" 
-                />
-                <!-- 眼睛高光 -->
-                <circle class="eye-shine" cx="31" cy="22" r="1" fill="white" />
-                <circle class="eye-shine" cx="45" cy="22" r="1" fill="white" />
-              </g>
-              <!-- 身体 - 圆润水滴形 -->
-              <path d="M22 48 Q40 52 58 48 L56 75 Q40 82 24 75 Z" class="body-shape" />
-              <!-- 手臂 - 举起的小手 -->
-              <path d="M22 52 Q10 58 12 70" class="arm-left" />
-              <path d="M58 52 Q70 58 68 70" class="arm-right" />
-              <!-- 手部 - 圆润小球 -->
-              <circle class="hand-left" cx="12" cy="70" r="4" fill="currentColor" />
-              <circle class="hand-right" cx="68" cy="70" r="4" fill="currentColor" />
-            </svg>
-
-            <!-- 密码遮挡遮罩 -->
-            <div class="eye-overlay" :class="{ 'overlay-hidden': !passwordFocused }"></div>
+          <!-- Background Layers -->
+          <div class="bg-gradient"></div>
+          <div class="bg-light-spot blue-spot"></div>
+          <div class="bg-light-spot purple-spot"></div>
+          <div class="bg-texture"></div>
+          
+          <!-- Product Mockup -->
+          <div class="product-mockup">
+            <div class="mockup-header">
+              <div class="mockup-logo"></div>
+              <div class="mockup-nav">
+                <span class="nav-item active"></span>
+                <span class="nav-item"></span>
+                <span class="nav-item"></span>
+              </div>
+            </div>
+            <div class="mockup-body">
+              <div class="mockup-sidebar">
+                <div class="menu-item"></div>
+                <div class="menu-item"></div>
+                <div class="menu-item"></div>
+                <div class="menu-item"></div>
+              </div>
+              <div class="mockup-main">
+                <div class="data-card"></div>
+                <div class="chart-area"></div>
+                <div class="status-panel"></div>
+              </div>
+            </div>
           </div>
-          <p class="eyebrow">Quantum Access Deck</p>
-          <div class="caption-wrapper">
-            <p class="dynamic-caption">{{ captionText }}</p>
+          
+          <!-- Floating Cards -->
+          <div class="floating-card card-smart-analysis">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+            </div>
+            <div class="card-content">
+              <span class="card-title">智能分析</span>
+              <span class="card-subtitle">自动提取关键数据</span>
+            </div>
+          </div>
+          
+          <div class="floating-card card-sync">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+            </div>
+            <div class="card-content">
+              <span class="card-title">实时同步</span>
+              <span class="card-subtitle">跨端数据即时更新</span>
+            </div>
+          </div>
+          
+          <div class="floating-card card-team">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+              </svg>
+            </div>
+            <div class="card-content">
+              <span class="card-title">团队协作</span>
+              <span class="card-subtitle">高效共享与管理</span>
+            </div>
+          </div>
+          
+          <!-- Brand Messaging -->
+          <div class="brand-messaging">
+            <h1 class="main-title">{{ mainTitle }}</h1>
+            <p class="subtitle">{{ subtitle }}</p>
+            <ul class="feature-list">
+              <li>智能处理任务</li>
+              <li>实时同步数据</li>
+              <li>多端无缝协作</li>
+            </ul>
           </div>
         </div>
       </aside>
@@ -438,7 +478,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMessage, useDialog } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
@@ -465,6 +505,9 @@ const tenantStore = useTenantStore()
 const message = useMessage()
 const dialog = useDialog()
 
+// 当前租户名称
+const currentTenantName = computed(() => tenantStore.currentTenant?.name || '未选择学校')
+
 const showPassword = reactive({
   login: false,
   register: false,
@@ -475,33 +518,34 @@ const isLogin = ref(true)
 const loading = ref(false)
 const passwordFocused = ref(false)
 
-// 眼睛视差跟踪
-const eyeOffset = reactive({ leftX: 0, leftY: 0, rightX: 0, rightY: 0 })
+// Parallax effect for brand visual
 let mouseX = 0
 let mouseY = 0
-let rafId: number | null = null
-
-const MAX_OFFSET = 1.5
-const EYE_LEFT_BASE = { x: 34, y: 20 }
-const EYE_RIGHT_BASE = { x: 46, y: 20 }
-
-function updateEyeParallax() {
-  const viewportCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-  const deltaX = (mouseX - viewportCenter.x) / viewportCenter.x
-  const deltaY = (mouseY - viewportCenter.y) / viewportCenter.y
-  
-  eyeOffset.leftX = deltaX * MAX_OFFSET
-  eyeOffset.leftY = deltaY * MAX_OFFSET * 0.5
-  eyeOffset.rightX = deltaX * MAX_OFFSET
-  eyeOffset.rightY = deltaY * MAX_OFFSET * 0.5
-  
-  rafId = requestAnimationFrame(updateEyeParallax)
-}
 
 function onMouseMove(event: MouseEvent) {
   mouseX = event.clientX
   mouseY = event.clientY
 }
+
+const parallaxStyle = computed(() => {
+  const maxOffset = 8
+  const x = ((mouseX / window.innerWidth) - 0.5) * maxOffset
+  const y = ((mouseY / window.innerHeight) - 0.5) * maxOffset
+  return {
+    transform: `translate(${x * 0.3}px, ${y * 0.3}px)`
+  }
+})
+
+// Dynamic text based on login state
+const mainTitle = computed(() => 
+  isLogin.value ? '欢迎回来，继续你的高效工作流' : '开启你的高效协作体验'
+)
+
+const subtitle = computed(() => 
+  isLogin.value 
+    ? '统一管理数据、任务与协作流程，让每一步都更流畅。'
+    : '从注册开始，快速连接团队、任务与业务数据'
+)
 
 const loginForm = reactive<LoginForm>({
   phone: '15018816993',
@@ -516,18 +560,6 @@ const registerForm = reactive<RegisterForm>({
   confirmPassword: '',
   agree: false
 })
-
-const spotlightMessages = [
-  '粒子环绕的护盾，将审批路径实时映射在光晕之上',
-  '氛围亮度自适应，让每一次输入都保持清晰与质感',
-  '悬浮态能量框架，动态提示步骤与完成度的跃迁'
-]
-
-const captionIndex = ref(0)
-let spotlightTimer: number | null = null
-
-// Character caption text with fade effect
-const captionText = ref(spotlightMessages[0])
 
 const resolveErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback
@@ -699,26 +731,14 @@ const handleForgotPassword = () => {
   showMessage('info', '请联系管理员重置密码')
 }
 
-// Watch for password field focus state
-watch(() => showPassword.login, (newVal) => {
-  // If password is shown, eye is blocked
-  passwordFocused.value = !newVal
-})
-
-onMounted(() => {
-  if (!tenantStore.hasTenant) {
-    router.push('/tenant-select')
+const switchTab = (toLogin: boolean) => {
+  isLogin.value = toLogin
+  if (toLogin) {
+    resetRegisterForm()
+  } else {
+    resetLoginForm()
   }
-  startSpotlightRotation()
-  window.addEventListener('mousemove', onMouseMove)
-  rafId = requestAnimationFrame(updateEyeParallax)
-})
-
-onBeforeUnmount(() => {
-  stopSpotlightRotation()
-  window.removeEventListener('mousemove', onMouseMove)
-  if (rafId) cancelAnimationFrame(rafId)
-})
+}
 
 const resetLoginForm = () => {
   loginForm.phone = ''
@@ -734,15 +754,6 @@ const resetRegisterForm = () => {
   registerForm.confirmPassword = ''
   showPassword.register = false
   registerForm.agree = false
-}
-
-const switchTab = (toLogin: boolean) => {
-  isLogin.value = toLogin
-  if (toLogin) {
-    resetRegisterForm()
-  } else {
-    resetLoginForm()
-  }
 }
 
 </script>
@@ -771,10 +782,11 @@ const switchTab = (toLogin: boolean) => {
   display: flex;
 }
 
+/* Left Panel: Brand Visual Area */
 .auth-showcase {
-  flex: 0 0 42%;
-  min-width: 300px;
-  background: #0b0d12;
+  flex: 0 0 55%;
+  min-width: 400px;
+  background: linear-gradient(180deg, #0B1020 0%, #111A35 50%, #1A2450 100%);
   color: #fff;
   position: sticky;
   top: 0;
@@ -783,141 +795,307 @@ const switchTab = (toLogin: boolean) => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  /* Diagonal cut background */
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
-}
-
-/* Background gradient for diagonal cut effect */
-.auth-showcase::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    linear-gradient(160deg, #0b0d12 0%, #0b0d12 80%, #1a1d24 100%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 .showcase-content {
-  width: min(460px, 88%);
+  width: min(520px, 90%);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;
   position: relative;
   z-index: 1;
 }
 
-.showcase-visual {
+/* Background Layers */
+.bg-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #0B1020 0%, #111A35 50%, #1A2450 100%);
+  z-index: 0;
+}
+
+.bg-light-spot {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.4;
+  animation: drift 10s ease-in-out infinite;
+}
+
+.blue-spot {
+  width: 400px;
+  height: 400px;
+  background: #3B82F6;
+  top: -100px;
+  left: -50px;
+  animation-delay: 0s;
+}
+
+.purple-spot {
+  width: 350px;
+  height: 350px;
+  background: #8B5CF6;
+  bottom: -50px;
+  left: 30%;
+  animation-delay: -2s;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(20px, -15px); }
+  66% { transform: translate(-10px, 10px); }
+}
+
+.bg-texture {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.01) 0%, transparent 50%);
+  background-size: 50px 50px, 50px 50px, 100% 100%;
+  z-index: 1;
+}
+
+/* Product Mockup */
+.product-mockup {
   position: relative;
-  width: 180px;
-  height: 220px;
-  margin: 0 auto;
+  width: 480px;
+  height: 320px;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: floatMockup 6s ease-in-out infinite;
+  z-index: 10;
+  overflow: hidden;
+}
+
+@keyframes floatMockup {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.mockup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.mockup-logo {
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+  border-radius: 6px;
+}
+
+.mockup-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.mockup-nav .nav-item {
+  width: 60px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.mockup-nav .nav-item.active {
+  background: rgba(59, 130, 246, 0.5);
+  width: 40px;
+}
+
+.mockup-body {
+  display: flex;
+  height: calc(100% - 48px);
+}
+
+.mockup-sidebar {
+  width: 60px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.mockup-sidebar .menu-item {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.mockup-main {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.data-card {
+  height: 60px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.chart-area {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background-image: linear-gradient(
+    to top,
+    rgba(59, 130, 246, 0.1) 0%,
+    transparent 100%
+  );
+}
+
+.status-panel {
+  height: 40px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+}
+
+/* Floating Cards */
+.floating-card {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #F8FAFC;
+  z-index: 20;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.card-icon {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  color: #3B82F6;
+  flex-shrink: 0;
 }
 
-/* SVG Character Styles */
-.character-svg {
-  width: 100%;
-  height: 100%;
-  color: rgba(255, 255, 255, 0.9);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.5));
-}
-
-.head-shape {
-  stroke: rgba(255, 255, 255, 0.7);
-  stroke-width: 1.5;
-}
-
-.body-shape {
-  stroke: rgba(255, 255, 255, 0.6);
-  stroke-width: 1.5;
-}
-
-.arm-left,
-.arm-right {
-  stroke: rgba(255, 255, 255, 0.5);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-}
-
-.character-eyes {
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-.eyes-hidden {
-  opacity: 0;
-  transform: scale(0.8);
-}
-
-.eye-left,
-.eye-right {
-  fill: #ff7a18;
-  filter: drop-shadow(0 0 8px rgba(255, 122, 24, 0.9));
-}
-
-.eye-shine {
-  fill: white;
-  opacity: 0.8;
-}
-
-.hand-left,
-.hand-right {
-  fill: rgba(255, 255, 255, 0.7);
-  transform-origin: center;
-}
-
-/* Eye Overlay */
-.eye-overlay {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
+.card-icon svg {
+  width: 18px;
   height: 18px;
-  background: rgba(11, 13, 18, 0.95);
-  border-radius: 3px;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  z-index: 2;
 }
 
-.overlay-hidden {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-8px);
+.card-content {
+  display: flex;
+  flex-direction: column;
 }
 
-/* Parallax Animation - 悬浮呼吸动画 - 大幅度 */
-@keyframes float {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  20% { transform: translate(-4px, -12px) rotate(-2deg); }
-  40% { transform: translate(4px, -18px) rotate(2deg); }
-  60% { transform: translate(-4px, -12px) rotate(-2deg); }
-  80% { transform: translate(4px, -6px) rotate(1deg); }
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
-@keyframes breathe {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 1; }
+.card-subtitle {
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.6);
+  line-height: 1.3;
 }
 
-@keyframes blink {
-  0%, 90%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.1); }
+.card-smart-analysis {
+  top: -20px;
+  left: -80px;
+  animation: floatCard1 5s ease-in-out infinite;
 }
 
-.character-svg {
-  animation: float 6s ease-in-out infinite, breathe 3s ease-in-out infinite;
+.card-sync {
+  top: 35%;
+  right: -100px;
+  animation: floatCard2 6s ease-in-out infinite 0.5s;
 }
 
-.character-eyes {
-  animation: blink 4s ease-in-out infinite;
-  transform-origin: center 24px;
+.card-team {
+  bottom: -10px;
+  left: -60px;
+  animation: floatCard3 7s ease-in-out infinite 1s;
+}
+
+@keyframes floatCard1 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes floatCard2 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes floatCard3 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* Brand Messaging */
+.brand-messaging {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  right: 0;
+  color: #F8FAFC;
+  text-align: left;
+}
+
+.main-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(248, 250, 252, 0.72);
+  margin: 0 0 20px 0;
+}
+
+.feature-list {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feature-list li {
+  font-size: 13px;
+  color: rgba(248, 250, 252, 0.8);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feature-list li::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #3B82F6;
+  border-radius: 50%;
 }
 
 /* Eyebrow */
@@ -930,47 +1108,23 @@ const switchTab = (toLogin: boolean) => {
   text-align: left;
 }
 
-/* Caption Styles */
-.caption-wrapper {
-  padding-left: 4px;
-}
-
-.dynamic-caption {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 300;
-  text-align: left;
-  letter-spacing: 0.02em;
-}
-
-.showcase-content h1 {
-  font-size: clamp(32px, 3.5vw, 48px);
-  margin: 0;
-}
-
 .auth-panel {
   flex: 1;
   position: relative;
-  border-left: 1px solid rgba(15, 18, 23, 0.06);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 252, 0.9));
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .form-scroll[data-scroll] {
-  height: 100vh;
-  overflow-y: auto;
-  padding: 48px clamp(32px, 4vw, 72px);
+  width: 100%;
+  max-width: 420px;
+  padding: 48px 32px;
 }
 
 .panel-inner {
-  max-width: 520px;
-  margin: 0 auto;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  padding: clamp(28px, 4vw, 44px);
-  box-shadow: 0 40px 90px rgba(12, 16, 32, 0.12);
+  width: 100%;
 }
 
 .tenant-info {
@@ -1437,6 +1591,62 @@ const switchTab = (toLogin: boolean) => {
   .password-toggle,
   .character-svg {
     display: none;
+  }
+}
+
+/* ===== Responsive Design ===== */
+@media (max-width: 1023px) {
+  .auth-viewport {
+    flex-direction: column;
+  }
+  
+  .auth-showcase {
+    flex: 0 0 280px;
+    min-width: 100%;
+  }
+  
+  .product-mockup {
+    width: 360px;
+    height: 240px;
+    transform: scale(0.85);
+  }
+  
+  .floating-card {
+    transform: scale(0.85);
+  }
+  
+  .card-smart-analysis {
+    left: -40px;
+  }
+  
+  .card-sync {
+    right: -60px;
+  }
+  
+  .card-team {
+    left: -30px;
+  }
+  
+  .brand-messaging {
+    bottom: 16px;
+  }
+  
+  .main-title {
+    font-size: 22px;
+  }
+  
+  .subtitle {
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  
+  .feature-list {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .auth-panel {
+    padding: 32px 24px;
   }
 }
 </style>

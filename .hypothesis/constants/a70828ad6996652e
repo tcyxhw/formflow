@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\models\base.py
+# hypothesis_version: 6.151.9
+
+['tenant.id', '主键ID', '创建时间', '更新时间', '租户ID']

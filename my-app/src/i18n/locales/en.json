@@ -1,0 +1,24 @@
+{
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "save": "Save",
+    "close": "Close",
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning"
+  },
+  "form": {
+    "formName": "Form Name",
+    "cascadeDeleteTitle": "Cascade Delete Form",
+    "cascadeDeleteWarning": "Warning: Delete Form",
+    "cascadeDeleteDescription": "Deleting this form will also delete all associated flow definitions. This action cannot be undone.",
+    "cascadeDeleteConfirm": "Confirm Delete",
+    "cascadeDeleteConfirmDescription": "Please confirm that you want to delete this form and all its associated flow definitions.",
+    "associatedFlowDefinitions": "Associated Flow Definitions"
+  }
+}

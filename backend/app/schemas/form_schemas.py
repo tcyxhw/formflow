@@ -69,7 +69,7 @@ class LogicSchemaBase(BaseModel):
 class FormCreateRequest(BaseModel):
     """创建表单请求"""
     name: str = Field(..., min_length=1, max_length=100, description="表单名称")
-    category: Optional[str] = Field(None, max_length=50, description="业务类别")
+    category_id: Optional[int] = Field(None, ge=1, description="分类ID")
     access_mode: AccessMode = Field(AccessMode.AUTHENTICATED, description="访问模式")
     submit_deadline: Optional[datetime] = Field(None, description="填写截止时间")
     allow_edit: bool = Field(False, description="提交后是否可修改")
@@ -90,7 +90,7 @@ class FormCreateRequest(BaseModel):
 class FormUpdateRequest(BaseModel):
     """更新表单请求"""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    category: Optional[str] = Field(None, max_length=50)
+    category_id: Optional[int] = Field(None, ge=1, description="分类ID")
     access_mode: Optional[AccessMode] = None
     submit_deadline: Optional[datetime] = None
     allow_edit: Optional[bool] = None
@@ -117,7 +117,7 @@ class FormQueryRequest(BaseModel):
     page: int = Field(1, ge=1, description="页码")
     page_size: int = Field(20, ge=1, le=100, description="每页数量")
     keyword: Optional[str] = Field(None, description="关键词搜索")
-    category: Optional[str] = Field(None, description="分类筛选")
+    category: Optional[int] = Field(None, description="分类ID筛选")
     status: Optional[FormStatus] = Field(None, description="状态筛选")
     owner_user_id: Optional[int] = Field(None, description="创建者筛选")
 
@@ -140,13 +140,14 @@ class FormResponse(BaseModel):
     id: int
     tenant_id: int
     name: str
-    category: Optional[str]
+    category_id: Optional[int] = Field(None, description="分类ID")
     access_mode: str
     owner_user_id: int
     status: str
     submit_deadline: Optional[datetime]
     allow_edit: bool
     max_edit_count: int
+    flow_definition_id: Optional[int] = Field(None, description="关联流程定义ID")
     created_at: datetime
     updated_at: datetime
 
@@ -190,3 +191,46 @@ class FormTemplateDetailResponse(FormTemplateResponse):
     form_schema: Dict[str, Any]
     ui_schema: Dict[str, Any]
     logic_json: Optional[Dict[str, Any]] = None
+
+
+# ========== 级联删除相关响应模型 ==========
+class FlowDefinitionMetadata(BaseModel):
+    """流程定义元数据"""
+    id: int
+    name: str
+    version: int
+
+
+class CascadeDeleteConflictResponse(BaseModel):
+    """级联删除冲突响应（需要用户确认）"""
+    form_id: int
+    form_name: str
+    flow_definition_count: int
+    flow_definitions: List[FlowDefinitionMetadata]
+
+
+class CascadeDeleteSuccessResponse(BaseModel):
+    """级联删除成功响应"""
+    form_id: int
+    form_name: str
+    deleted_flow_definitions: int
+
+
+# ========== 表单字段 API 响应模型 ==========
+class FormFieldResponse(BaseModel):
+    """表单字段响应"""
+    key: str = Field(..., description="字段唯一标识")
+    name: str = Field(..., description="字段名称/标签")
+    type: str = Field(..., description="字段类型")
+    description: Optional[str] = Field(None, description="字段描述")
+    required: bool = Field(False, description="是否必填")
+    options: Optional[List[Dict[str, Any]]] = Field(None, description="选项列表（用于选择类字段）")
+    props: Dict[str, Any] = Field(default_factory=dict, description="字段属性")
+
+
+class FormFieldsResponse(BaseModel):
+    """表单字段列表响应"""
+    form_id: int = Field(..., description="表单ID")
+    form_name: str = Field(..., description="表单名称")
+    fields: List[FormFieldResponse] = Field(..., description="表单字段列表")
+    system_fields: List[FormFieldResponse] = Field(..., description="系统字段列表")

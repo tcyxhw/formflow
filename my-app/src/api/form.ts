@@ -11,7 +11,8 @@ import type {
   FormDetailResponse,
   FormListQuery,
   FormListResponse,
-  FormTemplateSummary
+  FormTemplateSummary,
+  FormFieldsResponse
 } from '@/types/form'
 
 const FORM_BASE_PATH = '/api/v1/forms'
@@ -33,8 +34,8 @@ export const updateForm = (formId: number, data: FormUpdateRequest): Promise<Res
 /**
  * 发布表单
  */
-export const publishForm = (formId: number): Promise<Response<FormResponse>> => {
-  return request.post(`${FORM_BASE_PATH}/${formId}/publish`)
+export const publishForm = (formId: number, flowDefinitionId?: number): Promise<Response<FormResponse>> => {
+  return request.post(`${FORM_BASE_PATH}/${formId}/publish`, { flow_definition_id: flowDefinitionId })
 }
 
 /**
@@ -56,8 +57,16 @@ export const listForms = (
 /**
  * 删除表单
  */
-export const deleteForm = (formId: number): Promise<Response<void>> => {
-  return request.delete(`${FORM_BASE_PATH}/${formId}`)
+export const deleteForm = (formId: number, options?: { cascade?: boolean }): Promise<Response<any>> => {
+  const params = new URLSearchParams()
+  if (options?.cascade) {
+    params.append('cascade', 'true')
+  }
+  
+  const queryString = params.toString()
+  const url = `${FORM_BASE_PATH}/${formId}${queryString ? '?' + queryString : ''}`
+  
+  return request.delete(url)
 }
 
 /**
@@ -84,6 +93,21 @@ export const createFromTemplate = (
   return request.post(`${FORM_BASE_PATH}/from-template/${templateId}`, { name })
 }
 
+/**
+ * 获取表单字段列表
+ * 用于条件构造器等功能获取表单的所有字段定义
+ */
+export const getFormFields = (formId: number): Promise<Response<FormFieldsResponse>> => {
+  return request.get(`${FORM_BASE_PATH}/${formId}/fields`)
+}
+
+/**
+ * 获取或创建表单关联的流程定义
+ */
+export const getOrCreateFlowDefinition = (formId: number): Promise<Response<{ flow_definition_id: number }>> => {
+  return request.post(`${FORM_BASE_PATH}/${formId}/flow-definition`)
+}
+
 export default {
   createForm,
   updateForm,
@@ -94,4 +118,6 @@ export default {
   cloneForm,
   listTemplates,
   createFromTemplate,
+  getFormFields,
+  getOrCreateFlowDefinition,
 }

@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\schemas\submission_schemas.py
+# hypothesis_version: 6.151.9
+
+[100, 'approved', 'completed', 'csv', 'data', 'deleted', 'draft', 'excel', 'failed', 'pc', 'pending', 'processing', 'rejected', 'submitted', '关联流程实例ID', '填写耗时(秒)', '导出字段，None=全部', '导出格式', '指定提交ID，None=全部', '搜索提交数据', '是否脱敏', '草稿数据', '表单ID', '表单数据', '表单数据不能为空']

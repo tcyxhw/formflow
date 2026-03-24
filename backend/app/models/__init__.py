@@ -17,8 +17,11 @@ from app.models.user import (
     UserRole,
     ApprovalGroup,
     ApprovalGroupMember,
-    Delegation
+    Delegation,
+    DepartmentPost,
+    UserDepartmentPost
 )
+from app.models.category import Category
 from app.models.form import (
     Form,
     FormVersion,
@@ -28,6 +31,7 @@ from app.models.form import (
     FormDraft,
     Attachment
 )
+from app.models.user_quick_access import UserQuickAccess
 from app.models.workflow import (
     FlowDefinition,
     FlowNode,
@@ -58,6 +62,7 @@ from app.models.notification import (
     RefreshToken,
     DictItem
 )
+from app.models.batch_import import BatchImportLog
 
 # 导出所有模型
 __all__ = [
@@ -78,8 +83,11 @@ __all__ = [
     'ApprovalGroup',
     'ApprovalGroupMember',
     'Delegation',
+    'DepartmentPost',
+    'UserDepartmentPost',
 
     # 表单模块
+    'Category',
     'Form',
     'FormVersion',
     'FormPermission',
@@ -87,6 +95,7 @@ __all__ = [
     'Submission',
     'FormDraft',
     'Attachment',
+    'UserQuickAccess',
 
     # 流程模块
     'FlowDefinition',
@@ -117,4 +126,7 @@ __all__ = [
     'AuditLog',
     'RefreshToken',
     'DictItem',
+
+    # 批量导入模块
+    'BatchImportLog',
 ]

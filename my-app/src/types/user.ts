@@ -5,11 +5,12 @@
 
 // 用户基础信息
 export interface UserBase {
-  account: string          // 登录账号 3-50字符
-  name: string            // 真实姓名 2-50字符
-  email?: string          // 邮箱
-  phone?: string          // 手机号 1[3-9]\d{9}
-  department_id?: number  // 部门ID
+  account: string
+  name: string
+  email?: string
+  phone?: string
+  avatar_url?: string
+  department_id?: number
 }
 
 // 创建用户
@@ -83,4 +84,40 @@ export interface UserBasicInfo {
   tenant_id: number
   identity_type: string
   positions: string[]
+}
+
+// 部门信息
+export interface Department {
+  id: number
+  tenant_id: number
+  name: string
+  parent_id: number | null
+  type: string
+  is_root: boolean
+  sort_order: number
+}
+
+// 岗位信息
+export interface Position {
+  id: number
+  tenant_id: number
+  name: string
+}
+
+// 部门-岗位关系
+export interface DepartmentPost {
+  id: number
+  tenant_id: number
+  department_id: number
+  post_id: number
+  is_head: boolean
+}
+
+// 用户-部门-岗位关系
+export interface UserDepartmentPost {
+  id: number
+  tenant_id: number
+  user_id: number
+  department_id: number
+  post_id: number | null
 }

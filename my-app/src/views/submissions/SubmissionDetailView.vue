@@ -6,6 +6,16 @@
         <template #title>
           提交详情
         </template>
+        <template #extra>
+          <n-button @click="goHome">
+            <template #icon>
+              <n-icon>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              </n-icon>
+            </template>
+            返回主页
+          </n-button>
+        </template>
       </n-page-header>
 
       <n-alert
@@ -16,76 +26,20 @@
       />
 
       <template v-else-if="submission">
-        <n-grid :cols="24" :x-gap="16" :y-gap="16" responsive="screen">
-          <!-- 基本信息 -->
-          <n-gi :span="24" :md="12">
-            <n-card title="基本信息" :bordered="false">
-              <n-descriptions label-placement="left" :column="1" bordered size="small">
-                <n-descriptions-item label="提交 ID">
-                  {{ submission.id }}
-                </n-descriptions-item>
-                <n-descriptions-item label="表单名称">
-                  {{ submission.form_name }}
-                </n-descriptions-item>
-                <n-descriptions-item label="提交人">
-                  {{ submission.submitter_name }}
-                </n-descriptions-item>
-                <n-descriptions-item label="状态">
-                  <n-space>
-                    <n-tag :type="statusTagType(submission.status)">
-                      {{ statusLabel(submission.status) }}
-                    </n-tag>
-                    <n-tag :type="processStateTag(submission.process_state)">
-                      {{ formatProcessState(submission.process_state) }}
-                    </n-tag>
-                    <SlaBadge :level="timelineSlaLevel" :minutes="timelineRemainingMinutes" :show-remaining="true" />
-                  </n-space>
-                </n-descriptions-item>
-                <n-descriptions-item label="提交时间">
-                  {{ formatDate(submission.created_at) }}
-                </n-descriptions-item>
-                <n-descriptions-item label="耗时">
-                  {{ formatDuration(submission.duration) }}
-                </n-descriptions-item>
-                <n-descriptions-item label="来源">
-                  {{ submission.source || '-' }}
-                </n-descriptions-item>
-                <n-descriptions-item label="IP 地址">
-                  {{ submission.ip_address || '-' }}
-                </n-descriptions-item>
-              </n-descriptions>
-            </n-card>
-          </n-gi>
-
-          <!-- 快照信息 + 附件 -->
-          <n-gi :span="24" :md="12">
-            <n-space vertical :size="16">
-              <n-card title="快照信息" :bordered="false">
-                <n-descriptions label-placement="left" :column="1" bordered size="small">
-                  <n-descriptions-item label="表单版本">
-                    V{{ submission.snapshot_json?.version ?? '-' }}
-                  </n-descriptions-item>
-                  <n-descriptions-item label="发布于">
-                    {{ submission.snapshot_json?.published_at ? formatDate(submission.snapshot_json.published_at) : '-' }}
-                  </n-descriptions-item>
-                  <n-descriptions-item label="字段数量">
-                    {{ Object.keys(submission.snapshot_json?.field_labels || {}).length }}
-                  </n-descriptions-item>
-                </n-descriptions>
-              </n-card>
-
-              <n-card v-if="submission.attachments?.length" title="附件列表" :bordered="false">
-                <n-data-table
-                  :columns="attachmentColumns"
-                  :data="submission.attachments"
-                  :bordered="true"
-                  size="small"
-                  :single-line="false"
-                />
-              </n-card>
-            </n-space>
-          </n-gi>
-        </n-grid>
+        <!-- 基本信息 -->
+        <n-card title="基本信息" :bordered="false" style="margin-bottom: 16px;">
+          <n-descriptions label-placement="left" :column="1" bordered size="small">
+            <n-descriptions-item label="提交 ID">
+              {{ submission.id }}
+            </n-descriptions-item>
+            <n-descriptions-item label="表单名称">
+              {{ submission.form_name }}
+            </n-descriptions-item>
+            <n-descriptions-item label="提交时间">
+              {{ formatDate(submission.created_at) }}
+            </n-descriptions-item>
+          </n-descriptions>
+        </n-card>
 
         <!-- 表单数据 -->
         <n-card :bordered="false" class="data-card">
@@ -104,20 +58,77 @@
               :key="item.key"
               :label="item.label"
             >
-              <template v-if="item.attachments">
-                <n-space vertical :size="4">
-                  <n-a
-                    v-for="file in item.attachments"
-                    :key="file.id"
-                    :href="file.download_url"
-                    target="_blank"
-                  >
-                    {{ file.file_name }}
-                  </n-a>
-                </n-space>
+              <!-- 附件/图片字段 -->
+              <template v-if="item.fieldType === 'upload' || item.fieldType === 'image'">
+                <template v-if="item.attachments && item.attachments.length > 0">
+                  <n-space vertical :size="8">
+                    <div
+                      v-for="file in item.attachments"
+                      :key="file.id"
+                      class="attachment-item"
+                    >
+                      <!-- 图片预览 -->
+                      <template v-if="isImage(file.content_type)">
+                        <div class="image-preview-wrapper">
+                          <AuthImage
+                            :src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                            :alt="file.file_name"
+                            :width="200"
+                            :height="150"
+                            object-fit="cover"
+                            :preview-src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                            fallback-src="/image-placeholder.png"
+                          />
+                          <div class="image-actions">
+                            <n-button
+                              text
+                              type="primary"
+                              size="small"
+                              @click="downloadFile(file)"
+                            >
+                              下载原图
+                            </n-button>
+                          </div>
+                        </div>
+                      </template>
+                      <!-- 文件下载 -->
+                      <template v-else>
+                        <n-button
+                          text
+                          type="primary"
+                          @click="downloadFile(file)"
+                        >
+                          <template #icon>
+                            <n-icon>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                              </svg>
+                            </n-icon>
+                          </template>
+                          {{ file.file_name }}
+                        </n-button>
+                        <span class="file-size">({{ formatFileSize(file.size) }})</span>
+                      </template>
+                    </div>
+                  </n-space>
+                </template>
+                <template v-else>
+                  <span class="empty-value">未上传</span>
+                </template>
               </template>
+              <!-- 日期范围字段 -->
+              <template v-else-if="item.fieldType === 'date-range'">
+                {{ formatDateRange(item.value) }}
+              </template>
+              <!-- 日期字段 -->
+              <template v-else-if="item.fieldType === 'date'">
+                {{ formatDateValue(item.value) }}
+              </template>
+              <!-- 其他字段 -->
               <template v-else>
-                {{ formatFieldValue(item.value) }}
+                {{ formatFieldValue(item.value, item.options) }}
               </template>
             </n-descriptions-item>
           </n-descriptions>
@@ -128,115 +139,33 @@
             </n-collapse-item>
           </n-collapse>
         </n-card>
-
-        <!-- 流程轨迹 -->
-        <n-card :bordered="false" class="timeline-card">
-          <template #header>
-            <div class="timeline-header">
-              <h3>流程轨迹</h3>
-              <n-space>
-                <n-tag v-if="timelineStateLabel" size="small" :type="timelineStateTag">
-                  {{ timelineStateLabel }}
-                </n-tag>
-                <SlaBadge :level="timelineSlaLevel" :minutes="timelineRemainingMinutes" :show-remaining="true" />
-              </n-space>
-            </div>
-          </template>
-
-          <n-spin :show="timelineLoading">
-            <n-empty v-if="!hasProcessInstance" description="当前提交尚未进入流程" />
-            <template v-else>
-              <n-result
-                v-if="timelineError"
-                status="error"
-                title="流程轨迹加载失败"
-                :description="timelineError"
-              >
-                <template #footer>
-                  <n-button size="small" type="primary" @click="loadTimeline">
-                    重新加载
-                  </n-button>
-                </template>
-              </n-result>
-              <n-empty v-else-if="!timelineEntries.length" description="暂无轨迹记录" />
-              <n-timeline v-else>
-                <n-timeline-item
-                  v-for="(entry, index) in timelineEntries"
-                  :key="buildTimelineKey(entry, index)"
-                  :type="timelineEntryVisualType(entry)"
-                  :time="formatTimelineTime(entry)"
-                >
-                  <template #header>
-                    <div class="timeline-node-header">
-                      <span>{{ entry.node_name || '系统事件' }}</span>
-                      <n-tag size="small" :type="timelineEntryVisualType(entry)">
-                        {{ formatTimelineEntryLabel(entry) }}
-                      </n-tag>
-                    </div>
-                  </template>
-                  <div class="timeline-item-body">
-                    <div class="timeline-meta">
-                      <span>开始：{{ formatDate(entry.started_at) }}</span>
-                      <span>完成：{{ formatDate(entry.completed_at) }}</span>
-                    </div>
-                    <div class="timeline-meta">
-                      <span>截止：{{ formatDate(entry.due_at) || '—' }}</span>
-                      <SlaBadge :level="entry.sla_level" :minutes="entry.remaining_sla_minutes" :show-remaining="true" />
-                    </div>
-                    <div class="timeline-meta">
-                      <span>当前操作：{{ entry.action ? actionLabel(entry.action) : '待处理' }}</span>
-                      <span>执行人：{{ formatActor(entry.actor_user_id, entry.actor_name) }}</span>
-                    </div>
-                    <p v-if="entry.comment" class="timeline-comment">
-                      {{ entry.comment }}
-                    </p>
-                    <n-collapse v-if="entry.actions?.length" class="timeline-actions">
-                      <n-collapse-item title="操作记录" :name="`actions-${index}`">
-                        <n-timeline size="medium">
-                          <n-timeline-item
-                            v-for="(action, actionIndex) in entry.actions"
-                            :key="`${entry.task_id || entry.node_id}-${actionIndex}`"
-                            :type="timelineActionType(action)"
-                            :time="formatDate(action.created_at)"
-                          >
-                            <div class="timeline-action-item">
-                              <div class="timeline-meta">
-                                <span>操作：{{ actionLabel(action.action) }}</span>
-                                <span>执行人：{{ formatActor(action.actor_user_id, action.actor_name) }}</span>
-                              </div>
-                              <p v-if="action.comment" class="timeline-comment">
-                                {{ action.comment }}
-                              </p>
-                            </div>
-                          </n-timeline-item>
-                        </n-timeline>
-                      </n-collapse-item>
-                    </n-collapse>
-                  </div>
-                </n-timeline-item>
-              </n-timeline>
-            </template>
-          </n-spin>
-        </n-card>
       </template>
     </n-spin>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, h } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useMessage, NA, type DataTableColumns } from 'naive-ui'
+import { useMessage, NImage, NIcon } from 'naive-ui'
 import { getSubmissionDetail } from '@/api/submission'
-import { getProcessTimeline } from '@/api/approvals'
 import type { SubmissionDetail } from '@/types/submission'
 import type { AttachmentInfo } from '@/types/attachment'
-import type { ProcessTimelineResponse, TimelineEntry, TimelineAction } from '@/types/approval'
-import { formatActionLabel, formatActorLabel, timelineActionTag } from '@/utils/audit'
-import { formatRemainingMinutes, formatProcessState, processStateTag } from '@/utils/sla'
-import SlaBadge from '@/components/common/SlaBadge.vue'
+import AuthImage from '@/components/AuthImage.vue'
 
-type TagType = 'default' | 'success' | 'error' | 'info' | 'warning'
+interface SelectOption {
+  label: string
+  value: string | number
+}
+
+interface DisplayField {
+  key: string
+  label: string
+  value: unknown
+  fieldType?: string
+  options?: SelectOption[]
+  attachments?: AttachmentInfo[]
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -245,9 +174,6 @@ const message = useMessage()
 const loading = ref(false)
 const submission = ref<SubmissionDetail | null>(null)
 const showRawData = ref(false)
-const timelineLoading = ref(false)
-const timelineError = ref<string | null>(null)
-const timeline = ref<ProcessTimelineResponse | null>(null)
 
 const attachmentMap = computed(() => {
   const map = new Map<number, AttachmentInfo>()
@@ -258,23 +184,32 @@ const attachmentMap = computed(() => {
   return map
 })
 
-interface DisplayField {
-  key: string
-  label: string
-  value: unknown
-  attachments?: AttachmentInfo[]
-}
-
 const displayFields = computed<DisplayField[]>(() => {
   if (!submission.value) return []
-  const labels = submission.value.snapshot_json?.field_labels || {}
+  const snapshot = submission.value.snapshot_json || {}
+  const labels = snapshot.field_labels || {}
+  const types = snapshot.field_types || {}
+  const options = snapshot.field_options || {}
   const raw = submission.value.data_jsonb || {}
+  const attachments = submission.value.attachments || []
+
+  console.log('[displayFields] attachments:', attachments)
+  console.log('[displayFields] field_types:', types)
+  console.log('[displayFields] raw data:', raw)
+
   return Object.entries(raw).map(([key, value]) => {
-    const attachmentValue = resolveAttachmentValue(value)
+    const fieldType = types[key]
+    const fieldOptions = options[key]
+    const attachmentValue = resolveAttachmentValue(value, fieldType)
+
+    console.log(`[displayFields] key: ${key}, fieldType: ${fieldType}, value:`, value, 'attachments:', attachmentValue)
+
     return {
       key,
       label: labels[key] || key,
       value,
+      fieldType,
+      options: fieldOptions,
       attachments: attachmentValue || undefined,
     }
   })
@@ -285,123 +220,6 @@ const formattedRawData = computed(() => {
   return JSON.stringify(submission.value.data_jsonb || {}, null, 2)
 })
 
-const hasProcessInstance = computed(() => Boolean(submission.value?.process_instance_id))
-const timelineEntries = computed<TimelineEntry[]>(() => timeline.value?.entries ?? [])
-const latestTimelineEntry = computed(() => {
-  const list = timelineEntries.value
-  if (!list.length) return null
-  return list[list.length - 1]
-})
-const timelineRemainingMinutes = computed(() => latestTimelineEntry.value?.remaining_sla_minutes ?? null)
-const timelineSlaLevel = computed(() => latestTimelineEntry.value?.sla_level ?? null)
-
-const timelineStateLabel = computed(() => {
-  const state = timeline.value?.state || submission.value?.process_state
-  if (!state) return ''
-  switch (state) {
-    case 'running':
-      return '运行中'
-    case 'finished':
-      return '已完成'
-    case 'canceled':
-      return '已终止'
-    default:
-      return '未知状态'
-  }
-})
-
-const timelineStateTag = computed<TagType>(() => {
-  const state = timeline.value?.state || submission.value?.process_state
-  if (!state) return 'default'
-  if (state === 'finished') return 'success'
-  if (state === 'running') return 'info'
-  if (state === 'canceled') return 'warning'
-  return 'default'
-})
-
-const ACTION_LABEL_MAP: Record<string, string> = {
-  approve: '已通过',
-  reject: '已拒绝',
-  transfer: '已转交',
-  delegate: '已委托',
-  add_sign: '已加签',
-  claim: '已认领',
-  release: '已释放',
-  cancel: '已撤销',
-  auto_pass: '系统通过',
-}
-
-// 附件表格列定义
-const attachmentColumns: DataTableColumns<AttachmentInfo> = [
-  {
-    title: '文件名',
-    key: 'file_name',
-    minWidth: 160,
-    ellipsis: {
-      tooltip: true
-    },
-    render(row) {
-      return h(
-        NA,
-        {
-          href: row.download_url,
-          target: '_blank'
-        },
-        { default: () => row.file_name }
-      )
-    }
-  },
-  {
-    title: '大小',
-    key: 'size',
-    width: 120,
-    render(row) {
-      return formatFileSize(row.size)
-    }
-  },
-  {
-    title: '类型',
-    key: 'content_type',
-    minWidth: 140
-  },
-  {
-    title: '上传时间',
-    key: 'created_at',
-    width: 180,
-    render(row) {
-      return formatDate(row.created_at)
-    }
-  }
-]
-
-const resetTimelineState = () => {
-  timeline.value = null
-  timelineError.value = null
-  timelineLoading.value = false
-}
-
-const loadTimeline = async () => {
-  if (!submission.value?.process_instance_id) {
-    resetTimelineState()
-    return
-  }
-  timelineLoading.value = true
-  timelineError.value = null
-  try {
-    const res = await getProcessTimeline(submission.value.process_instance_id)
-    if (res.code === 200 && res.data) {
-      timeline.value = res.data
-    } else {
-      timelineError.value = res.message || '获取流程轨迹失败'
-    }
-  } catch (error) {
-    timelineError.value = '获取流程轨迹失败'
-    console.error('Failed to load process timeline:', error)
-  } finally {
-    timelineLoading.value = false
-  }
-}
-
 const loadDetail = async () => {
   const id = Number(route.params.id)
   if (!id) {
@@ -411,12 +229,17 @@ const loadDetail = async () => {
   }
 
   loading.value = true
-  resetTimelineState()
   try {
     const res = await getSubmissionDetail(id)
+    console.log('[loadDetail] API response:', res)
     if (res.code === 200 && res.data) {
       submission.value = res.data
-      await loadTimeline()
+      console.log('[loadDetail] submission data:', {
+        id: res.data.id,
+        attachments: res.data.attachments,
+        data_jsonb: res.data.data_jsonb,
+        snapshot_json: res.data.snapshot_json
+      })
     } else {
       submission.value = null
     }
@@ -428,61 +251,139 @@ const loadDetail = async () => {
   }
 }
 
-const resolveAttachmentValue = (value: unknown): AttachmentInfo[] | null => {
-  if (!Array.isArray(value)) return null
+const resolveAttachmentValue = (value: unknown, fieldType?: string): AttachmentInfo[] | null => {
+  if (!fieldType || !['upload', 'image'].includes(fieldType)) {
+    return null
+  }
+  
+  if (!Array.isArray(value)) {
+    return null
+  }
+
   const files = value
     .map((id) => (typeof id === 'number' ? attachmentMap.value.get(id) : null))
     .filter((item): item is AttachmentInfo => Boolean(item))
+  
   return files.length ? files : null
 }
 
-const formatFieldValue = (value: unknown): string => {
+const isImage = (contentType?: string): boolean => {
+  if (!contentType) return false
+  return contentType.startsWith('image/')
+}
+
+const downloadFile = (file: AttachmentInfo) => {
+  if (file.download_url) {
+    window.open(file.download_url, '_blank')
+  } else {
+    message.error('下载链接不可用')
+  }
+}
+
+const formatFieldValue = (value: unknown, options?: SelectOption[]): string => {
+  if (value == null) return '-'
+
+  if (options && options.length > 0) {
+    if (Array.isArray(value)) {
+      const labels = value.map(v => {
+        const option = options.find(opt => opt.value === v)
+        return option?.label || String(v)
+      })
+      return labels.join('、')
+    } else {
+      const option = options.find(opt => opt.value === value)
+      return option?.label || String(value)
+    }
+  }
+
   if (Array.isArray(value)) {
     return value.map((item) => String(item)).join('、')
   }
-  if (value && typeof value === 'object') {
+
+  if (typeof value === 'object') {
     return JSON.stringify(value)
   }
-  return value != null ? String(value) : '-'
+
+  return String(value)
 }
 
-const statusLabel = (status: string) => {
-  switch (status) {
-    case 'approved':
-      return '已通过'
-    case 'rejected':
-      return '已拒绝'
-    case 'draft':
-      return '草稿'
-    default:
-      return '已提交'
+const formatDateRange = (value: unknown): string => {
+  if (!value) return '-'
+
+  if (Array.isArray(value) && value.length === 2) {
+    const [start, end] = value
+    const startDate = formatDateOnly(start)
+    const endDate = formatDateOnly(end)
+    return `${startDate} - ${endDate}`
   }
-}
 
-const statusTagType = (status: string): 'success' | 'error' | 'info' | 'default' => {
-  switch (status) {
-    case 'approved':
-      return 'success'
-    case 'rejected':
-      return 'error'
-    case 'draft':
-      return 'info'
-    default:
-      return 'default'
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>
+    if ('start' in obj && 'end' in obj) {
+      const startDate = formatDateOnly(obj.start)
+      const endDate = formatDateOnly(obj.end)
+      return `${startDate} - ${endDate}`
+    }
   }
+
+  return String(value)
 }
 
-const formatDuration = (seconds?: number) => {
-  if (!seconds || seconds <= 0) return '-'
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (mins <= 0) return `${secs} 秒`
-  return `${mins} 分 ${secs} 秒`
+const formatDateOnly = (value: unknown): string => {
+  if (!value) return '-'
+
+  let date: Date
+  if (typeof value === 'number') {
+    date = new Date(value)
+  } else if (typeof value === 'string') {
+    date = new Date(value)
+  } else {
+    return String(value)
+  }
+
+  if (isNaN(date.getTime())) {
+    return String(value)
+  }
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const formatDateValue = (value: unknown): string => {
+  if (!value) return '-'
+
+  if (typeof value === 'number') {
+    const date = new Date(value)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  if (typeof value === 'string') {
+    const date = new Date(value)
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    }
+  }
+
+  return String(value)
 }
 
 const formatDate = (time?: string | null) => {
   if (!time) return '-'
-  return new Date(time).toLocaleString()
+  return new Date(time).toLocaleString('zh-CN')
 }
 
 const formatFileSize = (bytes?: number) => {
@@ -501,47 +402,12 @@ const toggleRawData = () => {
   showRawData.value = !showRawData.value
 }
 
-const buildTimelineKey = (entry: TimelineEntry, index: number) => `${entry.task_id || entry.node_id || 'sys'}-${index}`
-
-const timelineEntryVisualType = (entry: TimelineEntry): TagType => {
-  const action = (entry.action || '').toLowerCase()
-  if (action === 'approve' || entry.status === 'completed') return 'success'
-  if (action === 'reject' || entry.status === 'canceled') return 'error'
-  if (action === 'transfer' || action === 'delegate' || action === 'add_sign') return 'warning'
-  if (entry.status === 'claimed') return 'info'
-  return 'default'
-}
-
-const formatTimelineEntryLabel = (entry: TimelineEntry) => {
-  const action = (entry.action || '').toLowerCase()
-  if (ACTION_LABEL_MAP[action]) {
-    return ACTION_LABEL_MAP[action]
-  }
-  switch (entry.status) {
-    case 'completed':
-      return '已完成'
-    case 'claimed':
-      return '处理中'
-    case 'canceled':
-      return '已终止'
-    default:
-      return '待处理'
-  }
-}
-
-const formatTimelineTime = (entry: TimelineEntry) => {
-  return formatDate(entry.completed_at || entry.started_at)
-}
-
-const actionLabel = (action?: string | null) => formatActionLabel(action)
-
-const formatActor = (userId?: number | null, actorName?: string | null) =>
-  formatActorLabel(userId, actorName)
-
-const timelineActionType = (action: TimelineAction): TagType => timelineActionTag(action.action)
-
 const goBack = () => {
   router.back()
+}
+
+const goHome = () => {
+  router.push('/')
 }
 
 onMounted(loadDetail)
@@ -570,38 +436,30 @@ onMounted(loadDetail)
   margin: 0;
 }
 
-.timeline-card {
-  margin-top: 16px;
-}
-
-.timeline-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.timeline-node-header {
+.attachment-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 500;
 }
 
-.timeline-item-body {
-  margin-top: 8px;
-}
-
-.timeline-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+.file-size {
+  color: #999;
   font-size: 12px;
-  color: #666;
 }
 
-.timeline-comment {
-  margin-top: 6px;
-  font-size: 13px;
-  color: #333;
+.image-preview-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.image-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-value {
+  color: #999;
+  font-style: italic;
 }
 </style>

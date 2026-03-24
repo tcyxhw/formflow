@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessError
-from app.models.form import Submission
+from app.models.form import Form, Submission
 from app.models.workflow import (
     FlowDefinition,
     FlowNode,
@@ -66,15 +66,32 @@ class ProcessService:
         Time: O(1), Space: O(1)
         """
 
-        flow_def = (
-            db.query(FlowDefinition)
-            .filter(
-                FlowDefinition.form_id == form_id,
+        # 首先获取表单，检查是否有关联的流程定义
+        form = db.query(Form).filter(
+            Form.id == form_id,
+            Form.tenant_id == tenant_id,
+        ).first()
+
+        if not form:
+            raise BusinessError("表单不存在")
+
+        # 优先使用表单关联的流程定义
+        if form.flow_definition_id:
+            flow_def = db.query(FlowDefinition).filter(
+                FlowDefinition.id == form.flow_definition_id,
                 FlowDefinition.tenant_id == tenant_id,
+            ).first()
+        else:
+            # 如果没有关联，查询该表单的所有流程定义，取版本最高的
+            flow_def = (
+                db.query(FlowDefinition)
+                .filter(
+                    FlowDefinition.form_id == form_id,
+                    FlowDefinition.tenant_id == tenant_id,
+                )
+                .order_by(FlowDefinition.version.desc())
+                .first()
             )
-            .order_by(FlowDefinition.version.desc())
-            .first()
-        )
         if not flow_def:
             raise BusinessError("流程尚未配置")
 
@@ -90,6 +107,14 @@ class ProcessService:
         if not start_node:
             raise BusinessError("流程缺少可执行节点")
 
+        # 获取提交记录，获取发起人ID
+        submission = db.query(Submission).filter(
+            Submission.id == submission_id,
+            Submission.tenant_id == tenant_id,
+        ).first()
+        
+        initiator_id = submission.submitter_user_id if submission else None
+
         process = ProcessInstance(
             tenant_id=tenant_id,
             form_id=form_id,
@@ -100,7 +125,9 @@ class ProcessService:
         db.add(process)
         db.flush()
 
-        ProcessService._create_task_for_node(process, start_node, tenant_id, db)
+        ProcessService._create_task_for_node(
+            process, start_node, tenant_id, db, initiator_id=initiator_id
+        )
         db.flush()
         db.refresh(process)
         return process
@@ -352,10 +379,32 @@ class ProcessService:
         node: FlowNode,
         tenant_id: int,
         db: Session,
+        form_data: Optional[Dict[str, Any]] = None,
+        initiator_id: Optional[int] = None,
     ) -> Task:
-        """创建节点任务。"""
+        """创建节点任务。
 
-        assignee_user_id, assignee_group_id = AssignmentService.select_assignee(node, tenant_id, db)
+        :param process: 流程实例
+        :param node: 流程节点
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :param form_data: 表单数据（用于FORM_FIELD类型）
+        :param initiator_id: 发起人ID（用于DEPARTMENT_POST类型）
+        :return: 创建的任务
+
+        Time: O(1), Space: O(1)
+        """
+        # 从process获取表单数据（如果未提供）
+        if form_data is None and process.form_data_snapshot:
+            form_data = process.form_data_snapshot
+
+        # 从process获取发起人ID（如果未提供）
+        if initiator_id is None:
+            initiator_id = process.initiator_id if hasattr(process, 'initiator_id') else None
+
+        assignee_user_id, assignee_group_id = AssignmentService.select_assignee(
+            node, tenant_id, db, form_data=form_data, initiator_id=initiator_id
+        )
         task = Task(
             tenant_id=tenant_id,
             process_instance_id=process.id,
@@ -413,12 +462,13 @@ class ProcessService:
             return
 
         if decision == "reject":
-            process.state = "canceled"
-            ProcessService._cancel_pending_node_tasks(process.id, node.id, tenant_id, db, exclude_completed=False)
-            ProcessService._update_submission_status(
+            ProcessService._handle_rejection(
+                task=task,
+                node=node,
                 process=process,
-                status=SubmissionStatus.REJECTED.value,
+                tenant_id=tenant_id,
                 db=db,
+                context=context,
             )
             return
 
@@ -711,3 +761,149 @@ class ProcessService:
             required = None
 
         return join_policy, required
+
+    @staticmethod
+    def _handle_rejection(
+        task: Task,
+        node: FlowNode,
+        process: ProcessInstance,
+        tenant_id: int,
+        db: Session,
+        context: Optional[Dict[str, object]] = None,
+    ) -> None:
+        """处理驳回逻辑，根据节点的reject_strategy决定驳回策略。
+
+        :param task: 当前任务
+        :param node: 当前节点
+        :param process: 流程实例
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :param context: 上下文信息
+
+        Time: O(N), Space: O(N)
+        """
+        # 获取节点的驳回策略，默认为TO_START
+        reject_strategy = getattr(node, 'reject_strategy', None) or 'TO_START'
+
+        if reject_strategy == 'TO_START':
+            # 驳回到发起人，流程结束
+            process.state = "canceled"
+            ProcessService._cancel_pending_node_tasks(
+                process.id, node.id, tenant_id, db, exclude_completed=False
+            )
+            ProcessService._update_submission_status(
+                process=process,
+                status=SubmissionStatus.REJECTED.value,
+                db=db,
+            )
+            logger.info(
+                f"流程驳回到发起人，流程结束",
+                extra={
+                    "process_id": process.id,
+                    "node_id": node.id,
+                    "task_id": task.id,
+                },
+            )
+
+        elif reject_strategy == 'TO_PREVIOUS':
+            # 驳回到上一个审批节点
+            previous_node = ProcessService._find_previous_approval_node(
+                process.id, node.id, tenant_id, db
+            )
+
+            if previous_node:
+                # 取消当前节点的所有待处理任务
+                ProcessService._cancel_pending_node_tasks(
+                    process.id, node.id, tenant_id, db, exclude_completed=False
+                )
+                # 重新创建上一个节点的任务
+                new_task = ProcessService._create_task_for_node(
+                    process, previous_node, tenant_id, db
+                )
+                logger.info(
+                    f"流程驳回到上一个节点",
+                    extra={
+                        "process_id": process.id,
+                        "current_node_id": node.id,
+                        "previous_node_id": previous_node.id,
+                        "new_task_id": new_task.id if new_task else None,
+                    },
+                )
+            else:
+                # 没有上一个节点，退回到发起人（流程结束）
+                process.state = "canceled"
+                ProcessService._cancel_pending_node_tasks(
+                    process.id, node.id, tenant_id, db, exclude_completed=False
+                )
+                ProcessService._update_submission_status(
+                    process=process,
+                    status=SubmissionStatus.REJECTED.value,
+                    db=db,
+                )
+                logger.info(
+                    f"无上一个节点，流程驳回到发起人并结束",
+                    extra={
+                        "process_id": process.id,
+                        "node_id": node.id,
+                    },
+                )
+        else:
+            # 未知的驳回策略，默认按TO_START处理
+            logger.warning(
+                f"未知的驳回策略: {reject_strategy}，按TO_START处理",
+                extra={
+                    "process_id": process.id,
+                    "node_id": node.id,
+                    "reject_strategy": reject_strategy,
+                },
+            )
+            process.state = "canceled"
+            ProcessService._cancel_pending_node_tasks(
+                process.id, node.id, tenant_id, db, exclude_completed=False
+            )
+            ProcessService._update_submission_status(
+                process=process,
+                status=SubmissionStatus.REJECTED.value,
+                db=db,
+            )
+
+    @staticmethod
+    def _find_previous_approval_node(
+        process_id: int,
+        current_node_id: int,
+        tenant_id: int,
+        db: Session,
+    ) -> Optional[FlowNode]:
+        """查找上一个审批节点。
+
+        :param process_id: 流程实例ID
+        :param current_node_id: 当前节点ID
+        :param tenant_id: 租户ID
+        :param db: 数据库会话
+        :return: 上一个审批节点，如果没有则返回None
+
+        Time: O(N), Space: O(1)
+        """
+        # 查询当前流程中已完成的任务，排除当前节点，按完成时间倒序
+        completed_task = (
+            db.query(Task)
+            .filter(
+                Task.process_instance_id == process_id,
+                Task.status == "completed",
+                Task.node_id != current_node_id,
+                Task.tenant_id == tenant_id,
+            )
+            .order_by(Task.completed_at.desc())
+            .first()
+        )
+
+        if completed_task:
+            # 获取上一个节点
+            previous_node = (
+                db.query(FlowNode)
+                .filter(FlowNode.id == completed_task.node_id)
+                .first()
+            )
+            return previous_node
+
+        return None

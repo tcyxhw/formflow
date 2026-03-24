@@ -11,7 +11,7 @@
         </marker>
       </defs>
       <g>
-        <g v-for="routeItem in renderRoutes" :key="getRouteKey(routeItem)">
+        <g v-for="(routeItem, index) in renderRoutes" :key="getRouteKey(routeItem)">
           <line
             v-if="getRoutePosition(routeItem)"
             class="route-line"
@@ -19,10 +19,29 @@
             :y1="getRoutePosition(routeItem)?.from.y"
             :x2="getRoutePosition(routeItem)?.to.x"
             :y2="getRoutePosition(routeItem)?.to.y"
-            :stroke="routeItem.is_default ? themeColors.primary : themeColors.muted"
+            :stroke="themeColors.primary"
+            :stroke-width="getRouteStrokeWidth(routeItem)"
             :stroke-dasharray="routeItem.condition ? '8 4' : '0'"
             marker-end="url(#flow-arrow)"
           />
+          <g v-if="getRoutePosition(routeItem)">
+            <circle
+              :cx="getRouteLabelPosition(routeItem).x"
+              :cy="getRouteLabelPosition(routeItem).y"
+              r="12"
+              :fill="getRouteLabelBg(routeItem)"
+              stroke="white"
+              stroke-width="2"
+            />
+            <text
+              :x="getRouteLabelPosition(routeItem).x"
+              :y="getRouteLabelPosition(routeItem).y"
+              class="route-label"
+              :fill="getRouteLabelColor(routeItem)"
+            >
+              {{ index + 1 }}
+            </text>
+          </g>
         </g>
       </g>
     </svg>
@@ -151,6 +170,32 @@ const getRoutePosition = (route: FlowRouteConfig) => {
   return { from, to }
 }
 
+const getRouteLabelPosition = (route: FlowRouteConfig) => {
+  const pos = getRoutePosition(route)
+  if (!pos) return { x: 0, y: 0 }
+  return {
+    x: (pos.from.x + pos.to.x) / 2,
+    y: (pos.from.y + pos.to.y) / 2
+  }
+}
+
+const getRouteLabelBg = (route: FlowRouteConfig) => {
+  const priority = route.priority || 1
+  // 优先级越高，颜色越深
+  const opacity = Math.max(0.4, 1 - (priority - 1) * 0.2)
+  return `rgba(24, 160, 88, ${opacity})`
+}
+
+const getRouteLabelColor = (route: FlowRouteConfig) => {
+  return 'white'
+}
+
+const getRouteStrokeWidth = (route: FlowRouteConfig) => {
+  const priority = route.priority || 1
+  // 优先级越高，线越粗
+  return Math.max(1.5, 3.5 - (priority - 1) * 0.5)
+}
+
 onMounted(() => {
   window.addEventListener('pointermove', handlePointerMove)
 })
@@ -168,8 +213,7 @@ onBeforeUnmount(() => {
     linear-gradient(rgba(24, 160, 88, 0.06) 1px, transparent 0);
   background-size: 40px 40px;
   border-radius: 8px;
-  min-height: 520px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .connection-layer {
@@ -181,8 +225,14 @@ onBeforeUnmount(() => {
 }
 
 .route-line {
-  stroke-width: 2;
   fill: none;
+}
+
+.route-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 .draft-node {

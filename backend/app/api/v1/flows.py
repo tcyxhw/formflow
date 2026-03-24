@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, Path
 from sqlalchemy.orm import Session
 
-from app.api.deps import RequireAdmin, get_current_tenant_id, get_db
+from app.api.deps import RequireFlowConfiguration, get_current_tenant_id, get_db
 from app.models.user import User
 from app.core.exceptions import BusinessError, NotFoundError
 from app.core.response import error_response, success_response
@@ -22,7 +22,7 @@ router = APIRouter()
 @router.get("/{flow_definition_id}", summary="获取流程定义详情")
 async def get_flow_definition(
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
-    current_user: User = Depends(RequireAdmin),
+    current_user: User = Depends(RequireFlowConfiguration),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
@@ -45,7 +45,7 @@ async def get_flow_definition(
 @router.get("/{flow_definition_id}/draft", summary="获取流程草稿")
 async def get_flow_draft(
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
-    current_user=Depends(RequireAdmin),
+    current_user=Depends(RequireFlowConfiguration),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
@@ -69,7 +69,7 @@ async def get_flow_draft(
 async def save_flow_draft(
     request: "FlowDraftSaveRequest" = Body(..., description="草稿内容"),
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
-    current_user=Depends(RequireAdmin),
+    current_user=Depends(RequireFlowConfiguration),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
@@ -99,7 +99,7 @@ async def save_flow_draft(
 async def publish_flow(
     request: "FlowPublishRequest" = Body(..., description="发布参数"),
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
-    current_user=Depends(RequireAdmin),
+    current_user=Depends(RequireFlowConfiguration),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):
@@ -131,7 +131,7 @@ async def publish_flow(
 @router.get("/{flow_definition_id}/snapshots", summary="列出流程快照")
 async def list_flow_snapshots(
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
-    current_user=Depends(RequireAdmin),
+    current_user=Depends(RequireFlowConfiguration),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):

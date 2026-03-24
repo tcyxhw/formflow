@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\approval_service.py
+# hypothesis_version: 6.151.9
+
+[120, 'action', 'actor_user_id', 'add_sign', 'add_sign_user_ids', 'claim', 'comment', 'critical', 'delegate', 'delegate_user_id', 'expire_hours', 'expired', 'extra', 'extra_data', 'flow_name', 'group_name', 'message', 'node_name', 'normal', 'process_state', 'release', 'running', 'sla_hours', 'target_user_id', 'transfer', 'unknown', 'warning', '不在任务小组', '不在该任务小组，无法认领', '仅认领人可释放任务', '任务不存在', '任务已处理', '任务已指定其他处理人', '任务已被其他人认领', '任务已释放', '任务当前不可认领', '任务被认领', '无权处理该任务', '流程实例不存在', '流程暂无任务记录', '用户不存在或不可用', '缺少租户信息', '节点不存在，无法加签']

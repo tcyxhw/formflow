@@ -81,10 +81,25 @@ export const useHomeInteractive = defineStore('homeInteractive', () => {
     certificate: { urgent: false, eSeal: true }
   })
 
-  // 流程图数据
+  // 流程图数据 - 默认展示请假审批流程
   const flowData = ref<{ nodes: FlowNode[]; edges: FlowEdge[] }>({
-    nodes: [],
-    edges: []
+    nodes: [
+      { id: 'start', name: '提交申请', type: 'start', position: { x: 100, y: 200 } },
+      { id: 'counselor', name: '辅导员审批', type: 'user', position: { x: 300, y: 200 } },
+      { id: 'college', name: '学院审批', type: 'user', position: { x: 500, y: 150 } },
+      { id: 'school', name: '校级审批', type: 'user', position: { x: 700, y: 100 } },
+      { id: 'auto', name: '自动归档', type: 'auto', position: { x: 500, y: 250 } },
+      { id: 'end', name: '完成', type: 'end', position: { x: 500, y: 320 } }
+    ],
+    edges: [
+      { from: 'start', to: 'counselor', active: true },
+      { from: 'counselor', to: 'auto', condition: '≤3天', active: true },
+      { from: 'counselor', to: 'college', condition: '>3天', active: false },
+      { from: 'college', to: 'auto', condition: '≤7天', active: false },
+      { from: 'college', to: 'school', condition: '>7天', active: false },
+      { from: 'school', to: 'auto', active: false },
+      { from: 'auto', to: 'end', active: true }
+    ]
   })
 
   // 自动审批决策
@@ -281,6 +296,37 @@ export const useHomeInteractive = defineStore('homeInteractive', () => {
         pass: docsComplete && amount <= 500 ? 90 : 50,
         reject: !docsComplete ? 30 : 5,
         manual: docsComplete ? 10 : 20
+      }
+    } else if (currentScenario === 'room') {
+      const { bufferMin } = current as RoomControls
+      etaMinutes.value = bufferMin <= 5 ? 15 : bufferMin <= 10 ? 30 : 60
+      autoDecision.value = {
+        pass: 90,
+        reject: 2,
+        manual: 8
+      }
+    } else if (currentScenario === 'award') {
+      const { approvers, strategy, percent } = current as AwardControls
+      etaMinutes.value = approvers <= 3 ? 20 : approvers <= 5 ? 45 : 90
+      autoDecision.value = {
+        pass: percent >= 70 ? 80 : 50,
+        reject: 5,
+        manual: percent >= 70 ? 15 : 45
+      }
+    } else if (currentScenario === 'certificate') {
+      const { urgent, eSeal } = current as CertificateControls
+      etaMinutes.value = urgent ? 30 : 15
+      autoDecision.value = {
+        pass: eSeal ? 95 : 70,
+        reject: 3,
+        manual: eSeal ? 2 : 27
+      }
+    } else {
+      // 默认值
+      autoDecision.value = {
+        pass: 70,
+        reject: 10,
+        manual: 20
       }
     }
   }

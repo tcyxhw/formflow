@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\models\__init__.py
+# hypothesis_version: 6.151.9
+
+['Activity', 'ActivityCheckInCode', 'ActivityRegistration', 'ApprovalGroup', 'ApprovalGroupMember', 'Attachment', 'AuditLog', 'AwardMapping', 'AwardRecord', 'Booking', 'DBBaseModel', 'Delegation', 'Department', 'DictItem', 'FlowDefinition', 'FlowNode', 'FlowRoute', 'Form', 'FormDraft', 'FormPermission', 'FormShare', 'FormStatistics', 'FormVersion', 'LedgerDetail', 'NotificationConfig', 'NotificationLog', 'ParallelRuntime', 'Position', 'ProcessInstance', 'RefreshToken', 'Resource', 'Role', 'ScheduledJob', 'Submission', 'Task', 'TaskActionLog', 'Tenant', 'TenantMixin', 'TimestampMixin', 'User', 'UserPosition', 'UserProfile', 'UserQuickAccess', 'UserRole']

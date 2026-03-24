@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\schemas\approval_schemas.py
+# hypothesis_version: 6.151.9
+
+[100, 'SLA 等级', 'TimelineAction', 'canceled', 'claimed', 'completed', 'critical', 'expired', 'normal', 'open', 'running', 'unknown', 'warning', '仅查询个人任务', '任务总数', '关键词匹配，针对节点名称/表单数据', '剩余 SLA 分钟数', '加签说明', '包含所在小组的待办池', '受托人 ID', '委托有效时长 (小时)', '委托说明', '审批意见', '小组名称', '已超时任务数', '指派小组 ID', '指派用户 ID', '按 SLA 等级筛选', '按状态筛选', '操作标识', '无截止时间任务数', '正常任务数', '每页数量', '紧急任务数', '转交目标用户 ID', '转交说明', '需要加签的用户 ID 列表', '页码，从 1 开始', '预警任务数', '额外数据，如附件、抄送列表']

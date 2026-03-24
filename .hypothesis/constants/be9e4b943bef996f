@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\models\activity.py
+# hypothesis_version: 6.151.9
+
+[100, 200, 500, 1000, 2000, 'active', 'activity', 'activity.id', 'activity_id', 'activity_type', 'award_level', 'award_mapping', 'award_record', 'department.id', 'draft', 'form.id', 'ledger_detail', 'registered', 'score_type', 'status', 'student_user_id', 'submission.id', 'tenant_id', 'term', 'type', 'uq_activity_user', 'uq_award_mapping', 'uq_award_record', 'user.id', 'user_id', '主办部门ID', '二维码图片路径', '冲销来源ID', '分值', '分值类型', '分项评分', '变动分值', '名额限制', '地理围栏', '备注', '奖项等级', '学期', '学生ID', '已使用次数', '开始时间', '当前报名数', '报名开始时间', '报名时间', '报名结束时间', '报名表单ID', '报名表单提交ID', '最大使用次数', '有效开始时间', '有效结束时间', '来源类型', '来源记录ID', '活动ID', '活动名称', '活动地点', '活动类型', '活动说明', '状态', '生效开始日期', '生效结束日期', '签到方式', '签到时间', '签到码', '经办人ID', '结束时间', '评奖表单ID', '评审时间', '评审老师ID', '评语', '负责人ID', '附件数量']

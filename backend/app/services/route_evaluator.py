@@ -34,24 +34,123 @@ class RouteCondition(RootModel):
     root: RouteRule
 
 
+def _compare_numbers(actual: Any, expected: Any, comparator: Callable[[float, float], bool]) -> bool:
+    """数值型比较，失败则返回 False。"""
+
+    try:
+        actual_num = float(actual)
+        expected_num = float(expected)
+    except (TypeError, ValueError):
+        return False
+    return comparator(actual_num, expected_num)
+
+
+def _eval_between(actual: Any, expected: Any) -> bool:
+    """BETWEEN运算符：actual >= expected[0] AND actual <= expected[1]
+
+    :param actual: 实际值
+    :param expected: 期望值范围 [min, max]
+    :return: 是否在范围内
+
+    Time: O(1), Space: O(1)
+    """
+    if not isinstance(expected, (list, tuple)) or len(expected) != 2:
+        return False
+    try:
+        actual_num = float(actual)
+        return actual_num >= float(expected[0]) and actual_num <= float(expected[1])
+    except (TypeError, ValueError):
+        return False
+
+
+def _eval_has_any(actual: Any, expected: Any) -> bool:
+    """HAS_ANY运算符：actual和expected有交集
+
+    :param actual: 实际值列表
+    :param expected: 期望值列表
+    :return: 是否有交集
+
+    Time: O(N), Space: O(N)
+    """
+    if not isinstance(actual, (list, tuple, set)):
+        return False
+    if not isinstance(expected, (list, tuple, set)):
+        return False
+    return bool(set(actual) & set(expected))
+
+
+def _eval_has_all(actual: Any, expected: Any) -> bool:
+    """HAS_ALL运算符：actual包含expected全部元素
+
+    :param actual: 实际值列表
+    :param expected: 期望值列表
+    :return: 是否包含全部元素
+
+    Time: O(N), Space: O(N)
+    """
+    if not isinstance(actual, (list, tuple, set)):
+        return False
+    if not isinstance(expected, (list, tuple, set)):
+        return False
+    return set(expected).issubset(set(actual))
+
+
+def _eval_is_empty(actual: Any, _expected: Any) -> bool:
+    """IS_EMPTY运算符
+
+    :param actual: 实际值
+    :param _expected: 未使用
+    :return: 是否为空
+
+    Time: O(1), Space: O(1)
+    """
+    if actual is None:
+        return True
+    if isinstance(actual, str) and actual == "":
+        return True
+    if isinstance(actual, (list, tuple, dict)) and len(actual) == 0:
+        return True
+    return False
+
+
+def _eval_is_not_empty(actual: Any, _expected: Any) -> bool:
+    """IS_NOT_EMPTY运算符
+
+    :param actual: 实际值
+    :param _expected: 未使用
+    :return: 是否非空
+
+    Time: O(1), Space: O(1)
+    """
+    return not _eval_is_empty(actual, _expected)
+
+
+# 运算符映射字典
+OPERATOR_MAP: Dict[str, Callable[[Any, Any], bool]] = {
+    "equals": lambda actual, expected: actual == expected,
+    "not_equals": lambda actual, expected: actual != expected,
+    "gt": lambda actual, expected: _compare_numbers(actual, expected, lambda a, b: a > b),
+    "gte": lambda actual, expected: _compare_numbers(actual, expected, lambda a, b: a >= b),
+    "lt": lambda actual, expected: _compare_numbers(actual, expected, lambda a, b: a < b),
+    "lte": lambda actual, expected: _compare_numbers(actual, expected, lambda a, b: a <= b),
+    "in": lambda actual, expected: actual in expected if isinstance(expected, (list, tuple, set)) else False,
+    "not_in": lambda actual, expected: actual not in expected if isinstance(expected, (list, tuple, set)) else True,
+    "contains": lambda actual, expected: isinstance(actual, (list, tuple, set, str)) and expected in actual,
+    "not_contains": lambda actual, expected: not (isinstance(actual, (list, tuple, set, str)) and expected in actual),
+    "starts_with": lambda actual, expected: isinstance(actual, str) and isinstance(expected, str) and actual.startswith(expected),
+    "ends_with": lambda actual, expected: isinstance(actual, str) and isinstance(expected, str) and actual.endswith(expected),
+    "is_null": lambda actual, _expected: actual is None,
+    "not_null": lambda actual, _expected: actual is not None,
+    "between": _eval_between,
+    "has_any": _eval_has_any,
+    "has_all": _eval_has_all,
+    "is_empty": _eval_is_empty,
+    "is_not_empty": _eval_is_not_empty,
+}
+
+
 class RouteEvaluator:
     """路由条件评估器。"""
-
-    OPERATOR_MAP: Dict[str, Callable[[Any, Any], bool]] = {
-        "equals": lambda actual, expected: actual == expected,
-        "not_equals": lambda actual, expected: actual != expected,
-        "gt": lambda actual, expected: RouteEvaluator._compare_numbers(actual, expected, lambda a, b: a > b),
-        "gte": lambda actual, expected: RouteEvaluator._compare_numbers(actual, expected, lambda a, b: a >= b),
-        "lt": lambda actual, expected: RouteEvaluator._compare_numbers(actual, expected, lambda a, b: a < b),
-        "lte": lambda actual, expected: RouteEvaluator._compare_numbers(actual, expected, lambda a, b: a <= b),
-        "in": lambda actual, expected: actual in expected if isinstance(expected, (list, tuple, set)) else False,
-        "not_in": lambda actual, expected: actual not in expected if isinstance(expected, (list, tuple, set)) else True,
-        "contains": lambda actual, expected: isinstance(actual, (list, tuple, set, str)) and expected in actual,
-        "starts_with": lambda actual, expected: isinstance(actual, str) and isinstance(expected, str) and actual.startswith(expected),
-        "ends_with": lambda actual, expected: isinstance(actual, str) and isinstance(expected, str) and actual.endswith(expected),
-        "is_null": lambda actual, _expected: actual is None,
-        "not_null": lambda actual, _expected: actual is not None,
-    }
 
     LOGIC_MAP: Dict[str, Callable[[List[bool]], bool]] = {
         "and": all,
@@ -75,6 +174,7 @@ class RouteEvaluator:
         try:
             condition = RouteCondition.model_validate(condition_data)
         except Exception:
+            # 条件数据格式无效，返回 False 表示不匹配
             return False
 
         return cls._evaluate_rule(condition.root, context)
@@ -94,7 +194,7 @@ class RouteEvaluator:
 
         operator = (rule.operator or "equals").lower()
         actual = cls._extract_value(context, rule.field)
-        evaluator = cls.OPERATOR_MAP.get(operator)
+        evaluator = OPERATOR_MAP.get(operator)
         if not evaluator:
             return False
 
@@ -111,14 +211,3 @@ class RouteEvaluator:
             else:
                 return None
         return value
-
-    @staticmethod
-    def _compare_numbers(actual: Any, expected: Any, comparator: Callable[[float, float], bool]) -> bool:
-        """数值型比较，失败则返回 False。"""
-
-        try:
-            actual_num = float(actual)
-            expected_num = float(expected)
-        except (TypeError, ValueError):
-            return False
-        return comparator(actual_num, expected_num)

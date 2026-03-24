@@ -15,12 +15,12 @@ class Form(DBBaseModel):
     """表单主表"""
     __tablename__ = "form"
     __table_args__ = (
-        Index("idx_form_tenant_category", "tenant_id", "category"),  # ✅ 修复：添加表名前缀
-        Index("idx_form_tenant_status", "tenant_id", "status"),      # ✅ 修复：添加表名前缀
+        Index("idx_form_tenant_category", "tenant_id", "category_id"),
+        Index("idx_form_tenant_status", "tenant_id", "status"),
     )
 
     name = Column(String(100), nullable=False, comment="表单名称")
-    category = Column(String(50), nullable=True, comment="业务类别")
+    category_id = Column(Integer, ForeignKey("category.id", ondelete="SET NULL"), nullable=True, comment="分类ID")
     access_mode = Column(String(20), default="authenticated", comment="访问模式：authenticated/public")
     owner_user_id = Column(Integer, ForeignKey("user.id"), nullable=False, comment="创建者ID")
     status = Column(String(20), default="draft", comment="状态：draft/published/archived")
@@ -28,6 +28,9 @@ class Form(DBBaseModel):
     allow_edit = Column(Boolean, default=False, comment="提交后是否可修改")
     max_edit_count = Column(Integer, default=0, comment="最大修改次数")
     flow_definition_id = Column(Integer, ForeignKey("flow_definition.id"), nullable=True, comment="关联流程定义ID")
+
+    # 关系
+    category_obj = relationship("Category", back_populates="forms", foreign_keys=[category_id])
 
 
 
@@ -58,6 +61,7 @@ class FormPermission(DBBaseModel):
     grant_type = Column(String(20), nullable=False, comment="授权类型：user/role/department/position")
     grantee_id = Column(Integer, nullable=False, comment="授权对象ID")
     permission = Column(String(20), nullable=False, comment="权限类型：view/fill/edit/export/manage")
+    include_children = Column(Boolean, default=True, comment="部门类型时是否包含子部门")
     valid_from = Column(DateTime, nullable=True, comment="生效开始时间")
     valid_to = Column(DateTime, nullable=True, comment="生效结束时间")
 
@@ -131,7 +135,7 @@ class Attachment(DBBaseModel):
     )
 
     owner_type = Column(String(50), nullable=False, comment="归属类型")
-    owner_id = Column(Integer, nullable=False, comment="归属ID")
+    owner_id = Column(Integer, nullable=True, comment="归属ID")
     file_name = Column(String(255), nullable=False, comment="文件名")
     content_type = Column(String(100), nullable=True, comment="媒体类型")
     size = Column(Integer, nullable=False, comment="文件大小(字节)")

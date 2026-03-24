@@ -89,6 +89,10 @@ class TaskResponse(BaseModel):
     is_overdue: bool
     remaining_sla_minutes: Optional[int] = Field(default=None, description="剩余 SLA 分钟数")
     sla_level: SlaLevel = Field(default=SlaLevel.UNKNOWN, description="SLA 等级：normal/warning/critical/expired")
+    submitter_user_id: Optional[int] = Field(default=None, description="提交人ID")
+    submitter_name: Optional[str] = Field(default=None, description="提交人姓名")
+    form_data_snapshot: Optional[Dict[str, object]] = Field(default=None, description="表单数据快照")
+    form_id: Optional[int] = Field(default=None, description="表单ID")
 
 
 class TaskListResponse(BaseModel):

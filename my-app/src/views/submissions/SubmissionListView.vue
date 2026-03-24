@@ -10,9 +10,17 @@
           提交记录
         </template>
         <template #extra>
-          <n-button type="primary" :loading="exporting" @click="handleExport">
-            导出数据
-          </n-button>
+          <n-space>
+            <n-button @click="goHome">
+              <template #icon>
+                <n-icon :component="HomeOutline" />
+              </template>
+              返回主页
+            </n-button>
+            <n-button type="primary" :loading="exporting" @click="handleExport">
+              导出数据
+            </n-button>
+          </n-space>
         </template>
       </n-page-header>
 
@@ -120,6 +128,12 @@
           </n-space>
         </template>
       </n-modal>
+
+      <SubmissionDetailModal
+        :show="detailModalVisible"
+        :submission-id="selectedSubmissionId"
+        @update:show="detailModalVisible = $event"
+      />
     </n-spin>
   </div>
 </template>
@@ -128,7 +142,7 @@
 import { ref, reactive, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage, useDialog, NButton, NTag, NSpace, NIcon, type DataTableColumns } from 'naive-ui'
-import { RefreshOutline } from '@vicons/ionicons5'
+import { RefreshOutline, HomeOutline } from '@vicons/ionicons5'
 import {
   getSubmissionList,
   deleteSubmission,
@@ -141,10 +155,14 @@ import type {
   SubmissionExportAsyncResponse,
   SubmissionExportSyncResponse,
 } from '@/types/submission'
+import SubmissionDetailModal from '@/components/submission/SubmissionDetailModal.vue'
 
 const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
+
+const detailModalVisible = ref(false)
+const selectedSubmissionId = ref<number | undefined>()
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -209,7 +227,8 @@ const formatDate = (value?: string) => {
 }
 
 const viewDetail = (id: number) => {
-  router.push({ name: 'SubmissionDetail', params: { id } })
+  selectedSubmissionId.value = id
+  detailModalVisible.value = true
 }
 
 const confirmDelete = (id: number) => {
@@ -417,6 +436,10 @@ const resetExportDialog = () => {
 
 const goBack = () => {
   router.back()
+}
+
+const goHome = () => {
+  router.push('/')
 }
 
 onMounted(fetchList)

@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\flow_service.py
+# hypothesis_version: 6.151.9
+
+['approval', 'approver_ids', 'approver_type', 'changelog', 'condition', 'config', 'draft_id', 'end', 'flow', 'flow_definition_id', 'flow_publish', 'from_node_id', 'id', 'name', 'nodes', 'nodes_graph', 'routes', 'snapshot_id', 'start', 'temp_id', 'to_node_id', 'type', 'version_tag', '保存流程草稿', '发布流程快照', '只有表单创建者可以配置审批流程', '流程不可达：无法从开始节点到达结束节点', '流程只能有一个开始节点', '流程存在死循环', '流程定义不存在', '流程必须有一个开始节点', '流程必须至少有一个审批节点', '流程必须至少有一个结束节点', '流程缺少节点，无法发布', '流程至少需要一个节点', '草稿版本已变更，请刷新后再发布', '草稿版本已变更，请刷新后重试', '表单不存在', '请先保存草稿后再发布']

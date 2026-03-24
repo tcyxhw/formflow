@@ -33,6 +33,8 @@ class Department(DBBaseModel):
     name = Column(String(100), nullable=False, comment="部门名称")
     parent_id = Column(Integer, ForeignKey("department.id"), nullable=True, comment="上级部门ID")
     type = Column(String(20), nullable=False, comment="类型：college/office/department/class")
+    is_root = Column(Boolean, default=False, nullable=False, comment="是否是根部门")
+    sort_order = Column(Integer, default=0, comment="排序")
 
     # 关系定义 - 修复自引用关系
     # tenant = relationship("Tenant", back_populates="departments")
@@ -74,6 +76,7 @@ class User(DBBaseModel):
     name = Column(String(50), nullable=False, comment="真实姓名")
     email = Column(String(100), nullable=True, comment="邮箱")
     phone = Column(String(20), nullable=True, comment="手机号")
+    avatar_url = Column(String(500), nullable=True, comment="头像URL")
     department_id = Column(Integer, ForeignKey("department.id"), nullable=True, comment="主属部门ID")
     is_active = Column(Boolean, default=True, nullable=False, comment="是否启用")
 
@@ -169,6 +172,22 @@ class UserRole(DBBaseModel):
     # role = relationship("Role", back_populates="user_roles")
 
 
+class UserDepartment(DBBaseModel):
+    """用户部门关联表 - 支持用户多部门关联"""
+    __tablename__ = "user_department"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "department_id", name="uq_user_department"),
+    )
+
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    department_id = Column(Integer, ForeignKey("department.id"), nullable=False)
+    is_primary = Column(Boolean, default=False, comment="是否为主属部门")
+
+    # 关系
+    # user = relationship("User", back_populates="user_departments")
+    # department = relationship("Department", back_populates="user_departments")
+
+
 class ApprovalGroup(DBBaseModel):
     """审批小组表"""
     __tablename__ = "approval_group"
@@ -217,3 +236,27 @@ class Delegation(DBBaseModel):
     # 关系
     # delegator = relationship("User", foreign_keys="Delegation.delegator_user_id")
     # delegate = relationship("User", foreign_keys="Delegation.delegate_user_id")
+
+
+class DepartmentPost(DBBaseModel):
+    """部门-岗位关系表"""
+    __tablename__ = "department_post"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "department_id", "post_id", name="uq_department_post"),
+    )
+
+    department_id = Column(Integer, ForeignKey("department.id"), nullable=False, comment="部门ID")
+    post_id = Column(Integer, ForeignKey("position.id"), nullable=False, comment="岗位ID")
+    is_head = Column(Boolean, default=False, nullable=False, comment="是否是主负责人岗位")
+
+
+class UserDepartmentPost(DBBaseModel):
+    """用户-部门-岗位关系表"""
+    __tablename__ = "user_department_post"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "department_id", "post_id", name="uq_user_department_post"),
+    )
+
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False, comment="用户ID")
+    department_id = Column(Integer, ForeignKey("department.id"), nullable=False, comment="部门ID")
+    post_id = Column(Integer, ForeignKey("position.id"), nullable=True, comment="岗位ID（学生可为空）")

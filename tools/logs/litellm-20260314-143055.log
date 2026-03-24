@@ -1,0 +1,24 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260314143055
+Username: DESKTOP-4K6T46D\Administrator
+RunAs User: DESKTOP-4K6T46D\Administrator
+Configuration Name: 
+Machine: DESKTOP-4K6T46D (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
+Process ID: 25204
+PSVersion: 5.1.26100.7705
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.7705
+BuildVersion: 10.0.26100.7705
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+PS>TerminatingError(): "管道已被停止。"
+**********************
+Windows PowerShell transcript end
+End time: 20260314151348
+**********************

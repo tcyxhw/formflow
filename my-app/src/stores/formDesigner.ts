@@ -21,6 +21,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
   const allowEdit = ref(false)
   const maxEditCount = ref(0)
   const submitDeadline = ref<string>()
+  const flowDefinitionId = ref<number>()
   
   // 字段列表
   const fields = ref<FormField[]>([])
@@ -144,6 +145,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     allowEdit.value = config.allow_edit || false
     maxEditCount.value = config.max_edit_count || 0
     submitDeadline.value = config.submit_deadline
+    flowDefinitionId.value = config.flow_definition_id
     
     if (config.schema_json) {
       fields.value = config.schema_json.fields || []
@@ -166,6 +168,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     allowEdit.value = false
     maxEditCount.value = 0
     submitDeadline.value = undefined
+    flowDefinitionId.value = undefined
     fields.value = []
     selectedFieldId.value = undefined
     uiSchema.value = {
@@ -192,6 +195,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     allowEdit,
     maxEditCount,
     submitDeadline,
+    flowDefinitionId,
     fields,
     selectedFieldId,
     uiSchema,

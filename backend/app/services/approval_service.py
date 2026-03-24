@@ -20,6 +20,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Query, Session
 
 from app.core.exceptions import AuthorizationError, BusinessError, NotFoundError
+from app.models.form import Submission
 from app.models.user import ApprovalGroup, ApprovalGroupMember, User
 from app.models.workflow import (
     FlowDefinition,
@@ -84,13 +85,22 @@ class TaskService:
 
         total = base_query.count()
 
-        data_query = base_query.with_entities(
-            Task,
-            FlowNode.name.label("node_name"),
-            FlowDefinition.name.label("flow_name"),
-            ApprovalGroup.name.label("group_name"),
-            FlowNode.sla_hours.label("sla_hours"),
-            ProcessInstance.state.label("process_state"),
+        data_query = (
+            base_query
+            .outerjoin(Submission, Submission.id == ProcessInstance.submission_id)
+            .outerjoin(User, User.id == Submission.submitter_user_id)
+            .with_entities(
+                Task,
+                FlowNode.name.label("node_name"),
+                FlowDefinition.name.label("flow_name"),
+                ApprovalGroup.name.label("group_name"),
+                FlowNode.sla_hours.label("sla_hours"),
+                ProcessInstance.state.label("process_state"),
+                Submission.submitter_user_id.label("submitter_user_id"),
+                User.name.label("submitter_name"),
+                Submission.data_jsonb.label("form_data_snapshot"),
+                ProcessInstance.form_id.label("form_id"),
+            )
         )
 
         task_rows = (
@@ -108,6 +118,10 @@ class TaskService:
                 group_name=row.group_name,
                 sla_hours=row.sla_hours,
                 process_state=row.process_state,
+                submitter_user_id=row.submitter_user_id,
+                submitter_name=row.submitter_name,
+                form_data_snapshot=row.form_data_snapshot,
+                form_id=row.form_id,
             )
             for row in task_rows
         ]
@@ -274,6 +288,7 @@ class TaskService:
 
         TaskService._create_action_log(
             task_id=task.id,
+            tenant_id=tenant_id,
             actor_user_id=current_user.id,
             action="claim",
             detail={"message": "任务被认领"},
@@ -314,6 +329,7 @@ class TaskService:
 
         TaskService._create_action_log(
             task_id=task.id,
+            tenant_id=tenant_id,
             actor_user_id=current_user.id,
             action="release",
             detail={"message": "任务已释放"},
@@ -361,6 +377,7 @@ class TaskService:
 
         TaskService._create_action_log(
             task_id=task.id,
+            tenant_id=tenant_id,
             actor_user_id=current_user.id,
             action=request.action,
             detail=detail,
@@ -410,6 +427,7 @@ class TaskService:
 
         TaskService._create_action_log(
             task_id=task.id,
+            tenant_id=tenant_id,
             actor_user_id=current_user.id,
             action="transfer",
             detail={
@@ -448,6 +466,7 @@ class TaskService:
 
         TaskService._create_action_log(
             task_id=task.id,
+            tenant_id=tenant_id,
             actor_user_id=current_user.id,
             action="delegate",
             detail={
@@ -500,6 +519,7 @@ class TaskService:
 
         TaskService._create_action_log(
             task_id=task.id,
+            tenant_id=tenant_id,
             actor_user_id=current_user.id,
             action="add_sign",
             detail={
@@ -648,6 +668,10 @@ class TaskService:
         group_name: str | None,
         sla_hours: int | None,
         process_state: str | None,
+        submitter_user_id: int | None = None,
+        submitter_name: str | None = None,
+        form_data_snapshot: Dict[str, object] | None = None,
+        form_id: int | None = None,
     ) -> TaskResponse:
         """构建任务响应对象。
 
@@ -656,6 +680,10 @@ class TaskService:
         :param flow_name: 流程名称
         :param group_name: 小组名称
         :param sla_hours: 节点 SLA
+        :param submitter_user_id: 提交人ID
+        :param submitter_name: 提交人姓名
+        :param form_data_snapshot: 表单数据快照
+        :param form_id: 表单ID
         :return: 任务响应
 
         Time: O(1), Space: O(1)
@@ -691,6 +719,10 @@ class TaskService:
             is_overdue=is_overdue,
             remaining_sla_minutes=remaining_minutes,
             sla_level=sla_level,
+            submitter_user_id=submitter_user_id,
+            submitter_name=submitter_name,
+            form_data_snapshot=form_data_snapshot,
+            form_id=form_id,
         )
 
     @staticmethod
@@ -776,6 +808,7 @@ class TaskService:
     @staticmethod
     def _create_action_log(
         task_id: int,
+        tenant_id: int,
         actor_user_id: int,
         action: str,
         detail: Dict[str, object] | None,
@@ -784,6 +817,7 @@ class TaskService:
         """写入任务操作日志。
 
         :param task_id: 任务 ID
+        :param tenant_id: 租户 ID
         :param actor_user_id: 操作者 ID
         :param action: 动作
         :param detail: 详情
@@ -793,6 +827,7 @@ class TaskService:
         """
 
         log = TaskActionLog(
+            tenant_id=tenant_id,
             task_id=task_id,
             actor_user_id=actor_user_id,
             action=action,
@@ -815,6 +850,11 @@ class TaskService:
         process = db.query(ProcessInstance).filter(ProcessInstance.id == task.process_instance_id).first()
         flow_name = None
         process_state = "running"
+        submitter_user_id = None
+        submitter_name = None
+        form_data_snapshot = None
+        form_id = None
+
         if process:
             flow_def = (
                 db.query(FlowDefinition)
@@ -823,6 +863,24 @@ class TaskService:
             )
             flow_name = flow_def.name if flow_def else None
             process_state = process.state
+            form_id = process.form_id
+
+            if process.submission_id:
+                submission = (
+                    db.query(Submission)
+                    .filter(Submission.id == process.submission_id)
+                    .first()
+                )
+                if submission:
+                    submitter_user_id = submission.submitter_user_id
+                    form_data_snapshot = submission.data_jsonb
+                    if submitter_user_id:
+                        submitter = (
+                            db.query(User)
+                            .filter(User.id == submitter_user_id)
+                            .first()
+                        )
+                        submitter_name = submitter.name if submitter else None
 
         group_name = None
         if task.assignee_group_id:
@@ -840,6 +898,10 @@ class TaskService:
             group_name=group_name,
             sla_hours=node.sla_hours if node else None,
             process_state=process_state,
+            submitter_user_id=submitter_user_id,
+            submitter_name=submitter_name,
+            form_data_snapshot=form_data_snapshot,
+            form_id=form_id,
         )
 
     @staticmethod

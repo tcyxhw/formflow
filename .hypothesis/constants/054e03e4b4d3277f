@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\schemas\form_permission_schemas.py
+# hypothesis_version: 6.151.9
+
+['department', 'edit', 'export', 'fill', 'grant_type', 'include_children', 'manage', 'position', 'role', 'user', 'valid_from', 'valid_to', 'view', '全局生效开始时间', '全局生效结束时间', '失效时间', '失效时间不能早于生效时间', '已授予的权限列表', '授权对象ID', '授权对象名称', '授权类型', '授权项列表', '是否为表单创建者', '是否具备填写权限', '是否具备导出权限', '是否具备查看权限', '是否具备管理权限', '是否具备编辑权限', '是否拥有权限', '是否表单拥有者', '权限列表', '权限类型', '权限类型列表', '生效开始时间', '生效开始时间（可被全局覆盖）', '生效时间', '生效结束时间', '生效结束时间（可被全局覆盖）', '用户拥有的最高权限级别', '表单创建者信息', '部门类型时是否包含子部门', '部门类型时是否包含子部门，默认True', '需要的权限级别']

@@ -29,6 +29,8 @@ export interface FormPermission extends FormPermissionPayload {
   id: number
   form_id: number
   tenant_id: number
+  /** 授权对象名称 */
+  grantee_name?: string
   created_at: string
   updated_at: string
 }

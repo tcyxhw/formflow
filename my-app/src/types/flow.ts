@@ -2,11 +2,45 @@
  * 流程配置相关类型
  */
 
-export type FlowNodeType = 'start' | 'user' | 'auto' | 'end'
-export type FlowAssigneeType = 'user' | 'group' | 'role' | 'department' | 'position' | 'expr'
+// ==================== 枚举定义 ====================
+
+export type WorkflowStatus = 'draft' | 'published' | 'disabled'
+export type InstanceStatus = 'running' | 'approved' | 'rejected' | 'canceled'
+export type OperationType = 'submit' | 'approve' | 'reject' | 'cancel' | 'cc'
+
+export type FlowNodeType = 'start' | 'user' | 'auto' | 'condition' | 'cc' | 'end'
+export type FlowAssigneeType = 'user' | 'group' | 'role' | 'department' | 'position' | 'expr' | 'form_field' | 'department_post'
 export type FlowApprovePolicy = 'any' | 'all' | 'percent'
 export type FlowRouteMode = 'exclusive' | 'parallel'
+export type RejectStrategy = 'TO_START' | 'TO_PREVIOUS'
 export type JsonLogicExpression = Record<string, unknown>
+
+// 条件表达式类型（来自 condition.ts）
+export type Condition = JsonLogicExpression
+
+/**
+ * 条件分支 - 表示单个条件分支
+ */
+export interface ConditionBranch {
+  /** 优先级（数字越小优先级越高） */
+  priority: number
+  /** 分支标签 */
+  label: string
+  /** 条件表达式 */
+  condition: Condition
+  /** 目标节点 ID */
+  target_node_id: number
+}
+
+/**
+ * 条件分支配置 - 表示条件节点的完整配置
+ */
+export interface ConditionBranchesConfig {
+  /** 条件分支列表 */
+  branches: ConditionBranch[]
+  /** 默认目标节点 ID（当所有条件都不匹配时使用） */
+  default_target_node_id: number
+}
 
 export interface FlowNodeConfig {
   /** 节点数据库 ID（草稿节点可能为空） */
@@ -39,6 +73,10 @@ export interface FlowNodeConfig {
   auto_reject_cond?: JsonLogicExpression | null
   /** 抽检比例 */
   auto_sample_ratio: number
+  /** 驳回策略 */
+  reject_strategy: RejectStrategy
+  /** 条件分支配置（CONDITION 节点使用） */
+  condition_branches?: ConditionBranchesConfig | null
   /** 扩展元数据 */
   metadata: Record<string, unknown>
 }

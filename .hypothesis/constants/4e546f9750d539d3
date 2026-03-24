@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\services\form_permission_service.py
+# hypothesis_version: 6.151.9
+
+['created_count', 'message', 'note', 'skipped_count', 'user_id', 'user_name', '未登录', '未知', '权限已存在', '权限记录不存在', '缺少表单访问权限', '表单创建者，自动拥有全部权限']

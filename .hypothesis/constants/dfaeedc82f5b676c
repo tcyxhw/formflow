@@ -1,0 +1,4 @@
+# file: C:\Users\Administrator\Desktop\非作业文件\毕设\formflow修改版\backend\app\models\resource.py
+# hypothesis_version: 6.151.9
+
+[100, 200, 'booking', 'confirmed', 'end_at', 'form.id', 'idx_resource_time', 'name', 'resource', 'resource.id', 'resource_id', 'start_at', 'submission.id', 'tenant_id', 'type', 'uq_resource', 'user.id', '位置', '创建人ID', '容量', '属性', '开始时间', '提交ID', '状态', '结束时间', '资源名称', '预约表单ID']

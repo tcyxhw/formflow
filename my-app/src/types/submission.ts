@@ -84,6 +84,11 @@ export interface SubmissionListItem {
   submitter_name: string
   status: 'submitted' | 'draft' | 'approved' | 'rejected'
   created_at: string
+  process_instance_id?: number | null
+  process_state?: string | null
+  flow_definition_id?: number | null
+  due_at?: string | null
+  is_overdue?: boolean
 }
 
 // 提交详情
@@ -108,6 +113,7 @@ export interface SnapshotData {
   version: number
   published_at?: string
   field_labels: Record<string, string>
+  field_types: Record<string, string>
   field_options: Record<string, Array<{ label: string; value: SubmissionPrimitive }>>
   calculated_formulas?: Record<string, string>
 }

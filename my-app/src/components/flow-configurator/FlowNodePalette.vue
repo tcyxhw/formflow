@@ -50,7 +50,8 @@ const emitAddNode = (type: FlowNodeType) => {
 
 <style scoped>
 .palette-card {
-  height: 100%;
+  flex-shrink: 0;
+  min-height: 0;
 }
 
 .palette-grid {

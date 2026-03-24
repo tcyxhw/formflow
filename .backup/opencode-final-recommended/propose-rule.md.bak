@@ -1,0 +1,36 @@
+---
+description: Draft a repository rule proposal from the latest task
+agent: rule-reviewer
+subtask: true
+---
+
+Decide whether the latest task reveals a real standards gap.
+
+Use the following evidence:
+
+## Worktree status
+!`git status --short`
+
+## Unstaged diff
+!`git diff -- .`
+
+## Staged diff
+!`git diff --cached -- .`
+
+Read:
+@standards/10_rule_proposal_template.md
+@standards/09_review_prompt.md
+@standards/11_changelog.md
+@standards/04_python_rules_experimental.md
+@standards/06_vue3_rules_experimental.md
+
+Decision rules:
+1. Propose a rule only if the pattern is realistically recurring.
+2. Do not propose style-only rules that belong in formatter/lint tools.
+3. Prefer experimental rules before stable rules unless the case is already repeatedly validated.
+4. If no real standards gap exists, output exactly: no proposal.
+
+If a proposal is justified, output using the structure from @standards/10_rule_proposal_template.md.
+Also add a short recommendation at the end:
+- recommended target: stable / experimental / reject
+- reason: one sentence

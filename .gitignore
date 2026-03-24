@@ -24,4 +24,4 @@ Thumbs.db
 .claude/settings.local.json
 **/__pycache__/
 *.pyc
-my-app/.kiro/
+my-app/.kiro/backend/logs/
