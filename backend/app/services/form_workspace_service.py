@@ -98,7 +98,7 @@ class FormWorkspaceService:
         # 第3步：应用搜索关键词过滤
         if query.keyword:
             fillable_forms = FormWorkspaceService._apply_search_filter(
-                fillable_forms, query.keyword
+                fillable_forms, query.keyword, query.search_type, db
             )
         
         # 第4步：应用状态筛选
@@ -420,15 +420,16 @@ class FormWorkspaceService:
         return is_expired, is_closed, is_fill_limit_reached, can_fill
 
     @staticmethod
-    def _apply_search_filter(forms: List[Form], keyword: str) -> List[Form]:
+    def _apply_search_filter(forms: List[Form], keyword: str, search_type: str = "name", db: Session = None) -> List[Form]:
         """应用搜索关键词过滤
         
-        搜索范围：表单标题（name）
-        注意：Form 模型中没有 description 字段，所以只搜索标题
+        搜索范围：表单标题（name）或发布人（owner_name）
         
         Args:
             forms: 表单列表
             keyword: 搜索关键词
+            search_type: 搜索类型，name 或 owner
+            db: 数据库会话（按发布人搜索时需要）
             
         Returns:
             过滤后的表单列表
@@ -444,9 +445,19 @@ class FormWorkspaceService:
         
         filtered_forms = []
         for form in forms:
-            # 搜索表单标题
-            if form.name and keyword_lower in form.name.lower():
-                filtered_forms.append(form)
+            if search_type == "name":
+                # 搜索表单标题
+                if form.name and keyword_lower in form.name.lower():
+                    filtered_forms.append(form)
+            elif search_type == "owner" and db:
+                # 搜索发布人
+                from app.models.user import User
+                from sqlalchemy import select
+                stmt = select(User).filter(User.id == form.owner_user_id)
+                result = db.execute(stmt).scalars()
+                owner = result.one_or_none()
+                if owner and owner.name and keyword_lower in owner.name.lower():
+                    filtered_forms.append(form)
         
         return filtered_forms
 

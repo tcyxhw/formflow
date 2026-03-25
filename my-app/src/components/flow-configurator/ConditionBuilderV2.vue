@@ -671,14 +671,14 @@ watch(
   flex-direction: column;
   gap: 0;
   background: #ffffff;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
 }
 
 .builder-body {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   padding: 0;
 }
 
@@ -686,54 +686,88 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0;
+  overflow: auto;
+  max-height: 350px;
 }
 
 .preview-section {
   display: flex;
   flex-direction: column;
   gap: 0;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .json-preview {
-  padding: 16px;
-  background: #f9fbfc;
-  border-radius: 6px;
-  border: 1px solid #e0e5ec;
+  padding: 14px;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 1px solid #334155;
 }
 
 .preview-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .preview-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: #1f2937;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.preview-header .n-button {
+  color: #64748b;
+}
+
+.preview-header .n-button:hover {
+  color: #94a3b8;
 }
 
 .json-output {
   font-size: 11px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background: transparent;
+  border: none;
+}
+
+.json-output :deep(.n-input__textarea) {
+  background: transparent;
+  color: #e2e8f0;
+  border: none;
+  resize: none;
 }
 
 .show-json-btn {
   text-align: center;
-  padding: 12px 0;
+  padding: 8px 0;
+}
+
+.show-json-btn .n-button {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.show-json-btn .n-button:hover {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
 }
 
 /* 响应式设计 */
 @media (max-width: 1024px) {
   .builder-body {
-    gap: 20px;
+    gap: 14px;
   }
 }
 
 @media (max-width: 768px) {
   .builder-body {
-    gap: 16px;
+    gap: 12px;
   }
 
   .json-preview {
@@ -745,7 +779,7 @@ watch(
   }
 
   .preview-title {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .json-output {

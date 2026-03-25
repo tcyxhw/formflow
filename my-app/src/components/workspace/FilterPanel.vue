@@ -13,18 +13,6 @@
         />
       </div>
 
-      <!-- 类别筛选 -->
-      <div class="filter-item">
-        <label class="filter-label">表单类别</label>
-        <n-select
-          v-model:value="localFilters.category"
-          :options="categoryOptions"
-          placeholder="选择类别"
-          clearable
-          @update:value="handleFilterChange"
-        />
-      </div>
-
       <!-- 时间范围筛选 -->
       <div class="filter-item">
         <label class="filter-label">创建时间</label>

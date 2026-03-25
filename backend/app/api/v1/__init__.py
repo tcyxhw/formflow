@@ -17,6 +17,7 @@ from app.api.v1 import (
     activity,
     certificate,
     categories,
+    dashboard,
 )
 
 from app.config import settings
@@ -71,4 +72,11 @@ router.include_router(
     certificate.router,
     prefix="",
     tags=["证书管理"]
+)
+
+# 首页统计
+router.include_router(
+    dashboard.router,
+    prefix="/dashboard",
+    tags=["首页统计"]
 )

@@ -204,13 +204,13 @@
                           <template v-if="isImageFile(file.content_type)">
                             <div class="image-preview">
                               <n-image
-                                :src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                                :src="getImageUrl(file)"
                                 :alt="file.file_name"
                                 width="120"
                                 height="90"
                                 object-fit="cover"
-                                :preview-src="`/api/v1/attachments/${file.id}/download?inline=true`"
-                                fallback-src="/image-placeholder.png"
+                                :preview-src="getImageUrl(file)"
+                                fallback-src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='90' viewBox='0 0 120 90'%3E%3Crect fill='%23f0f0f0' width='120' height='90'/%3E%3Ctext fill='%23999' x='60' y='50' text-anchor='middle' font-size='12'%3E加载中...%3C/text%3E%3C/svg%3E"
                               />
                               <n-button
                                 text
@@ -316,7 +316,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import type { DataTableColumns } from 'naive-ui'
 import { NButton, NTag, useMessage, NIcon, NImage, NSpace } from 'naive-ui'
@@ -338,7 +338,8 @@ import type {
   TaskListQuery,
   TaskResponse,
   TaskSlaSummary,
-  TaskStatus
+  TaskStatus,
+  TaskTransferRequest
 } from '@/types/approval'
 import type { SlaLevel } from '@/types/approval'
 import type { AttachmentInfo } from '@/types/attachment'
@@ -352,6 +353,8 @@ import {
   releaseTask,
   transferTask
 } from '@/api/approvals'
+import { getAttachment } from '@/api/attachment'
+import { useAuthStore } from '@/stores/auth'
 
 import { formatActionLabel, formatActorLabel } from '@/utils/audit'
 import { formatProcessState, processStateTag } from '@/utils/sla'
@@ -373,6 +376,7 @@ interface FormFieldItem {
 }
 
 const message = useMessage()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const summaryLoading = ref(false)
@@ -425,6 +429,42 @@ const transferModalVisible = ref(false)
 const transferLoading = ref(false)
 const detailModalVisible = ref(false)
 const detailTask = ref<TaskResponse | null>(null)
+const attachmentDetails = ref<Map<number, AttachmentInfo>>(new Map())
+
+// 监听详情变化，批量加载附件信息
+watch(detailTask, async (task) => {
+  if (!task?.form_data_snapshot) {
+    attachmentDetails.value.clear()
+    return
+  }
+  
+  // 收集所有附件 ID
+  const attachmentIds: number[] = []
+  Object.entries(task.form_data_snapshot).forEach(([key, value]) => {
+    const keyLower = key.toLowerCase()
+    if (keyLower.includes('attachment') || keyLower.includes('proof') || keyLower.includes('file') || keyLower.includes('cert') || keyLower.includes('image')) {
+      // 单个附件ID
+      if (typeof value === 'number' && value > 0) {
+        attachmentIds.push(value)
+      }
+      // 附件ID数组
+      else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'number') {
+        attachmentIds.push(...value)
+      }
+    }
+  })
+  
+  if (attachmentIds.length === 0) {
+    attachmentDetails.value.clear()
+    return
+  }
+  
+  // 批量加载附件详情
+  const details = await loadAttachmentDetails(attachmentIds)
+  const newMap = new Map<number, AttachmentInfo>()
+  details.forEach(info => newMap.set(info.id, info))
+  attachmentDetails.value = newMap
+}, { immediate: true })
 
 const transferForm = reactive({
   target_user_id: null as number | null,
@@ -496,7 +536,10 @@ const fieldLabelMap: Record<string, string> = {
   preferred_date: '期望日期',
   attachment: '附件',
   proof: '证明材料',
+  medical_cert: '病假证明',
+  medical_certificate: '病假证明',
   leave_type: '请假类型',
+  leaveType: '请假类型',
   startDate: '开始日期',
   endDate: '结束日期',
   leaveDays: '请假天数'
@@ -553,7 +596,7 @@ function detectFieldType(key: string, value: unknown): string {
   const keyLower = key.toLowerCase()
   
   // 附件字段
-  if (keyLower.includes('attachment') || keyLower.includes('proof') || keyLower.includes('file')) {
+  if (keyLower.includes('attachment') || keyLower.includes('proof') || keyLower.includes('file') || keyLower.includes('cert') || keyLower.includes('image')) {
     return 'attachment'
   }
   
@@ -647,13 +690,17 @@ function formatValueByType(value: unknown, type: string, key: string): {
     
     case 'select':
       if (typeof value === 'string') {
-        return { displayValue: optionValueMap[value] || value }
+        // 先尝试精确匹配，再尝试小写匹配
+        return { displayValue: optionValueMap[value] || optionValueMap[value.toLowerCase()] || value }
       }
       return { displayValue: String(value) }
     
     case 'multi-select':
       if (Array.isArray(value)) {
-        const mapped = value.map(v => optionValueMap[String(v)] || String(v))
+        const mapped = value.map(v => {
+          const str = String(v)
+          return optionValueMap[str] || optionValueMap[str.toLowerCase()] || str
+        })
         return { 
           displayValue: mapped.join('、'),
           displayValueArray: mapped
@@ -665,18 +712,45 @@ function formatValueByType(value: unknown, type: string, key: string): {
       return { displayValue: value ? '是' : '否' }
     
     case 'attachment':
+      // 处理单个附件ID
+      if (typeof value === 'number' && value > 0) {
+        const attachment = attachmentDetails.value.has(value) 
+          ? attachmentDetails.value.get(value)!
+          : {
+              id: value,
+              file_name: `附件_${value}`,
+              content_type: 'application/octet-stream',
+              size: 0,
+              storage_path: '',
+              download_url: `/api/v1/attachments/${value}/download`,
+              created_at: ''
+            }
+        return {
+          displayValue: '1 个附件',
+          attachments: [attachment]
+        }
+      }
       // 处理附件ID数组
       if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'number') {
-        // 这里需要从后端获取附件信息，暂时显示为ID列表
-        return { 
-          displayValue: `${value.length} 个附件`,
-          attachments: value.map(id => ({
+        // 使用已加载的附件信息
+        const attachments = value.map(id => {
+          if (attachmentDetails.value.has(id)) {
+            return attachmentDetails.value.get(id)!
+          }
+          // 如果还未加载，返回占位信息
+          return {
             id,
-            file_name: `附件 ${id}`,
+            file_name: `附件_${id}`,
             content_type: 'application/octet-stream',
             size: 0,
-            download_url: `/api/v1/attachments/${id}/download`
-          }))
+            storage_path: '',
+            download_url: `/api/v1/attachments/${id}/download`,
+            created_at: ''
+          }
+        })
+        return { 
+          displayValue: `${value.length} 个附件`,
+          attachments
         }
       }
       return { displayValue: '无附件' }
@@ -700,9 +774,816 @@ function formatValueByType(value: unknown, type: string, key: string): {
   }
 }
 
+// 检查文件是否为图片
+function isImageFile(contentType: string): boolean {
+  return contentType?.startsWith('image/') ?? false
+}
+
+// 附件信息缓存
+const attachmentCache = new Map<number, AttachmentInfo>()
+
+// 获取附件详情
+async function loadAttachmentDetails(ids: number[]): Promise<AttachmentInfo[]> {
+  const results: AttachmentInfo[] = []
+  
+  for (const id of ids) {
+    if (attachmentCache.has(id)) {
+      results.push(attachmentCache.get(id)!)
+      continue
+    }
+    
+    try {
+      const { data } = await getAttachment(id)
+      if (data) {
+        attachmentCache.set(id, data)
+        results.push(data)
+      }
+    } catch {
+      // 如果获取失败，使用默认值
+      const fallback: AttachmentInfo = {
+        id,
+        file_name: `附件_${id}`,
+        content_type: 'application/octet-stream',
+        size: 0,
+        storage_path: '',
+        download_url: `/api/v1/attachments/${id}/download`,
+        created_at: ''
+      }
+      results.push(fallback)
+    }
+  }
+  
+  return results
+}
+
+// 获取带认证 token 的图片 URL
+function getImageUrl(attachment: AttachmentInfo): string {
+  if (!attachment.download_url) return ''
+  const token = authStore.getAccessToken()
+  const baseUrl = attachment.download_url.startsWith('http') 
+    ? attachment.download_url 
+    : `${attachment.download_url}`
+  return `${baseUrl}?token=${encodeURIComponent(token)}`
+}
+
+// 格式化文件大小
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '未知'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const k = 1024
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${units[i]}`
+}
+
 // 格式化时间戳
 function formatTimestamp(value: unknown): string {
   if (!value) return '—'
   
   let timestamp: number
   if (typeof value === 'number') {
+    timestamp = value
+  } else if (typeof value === 'string') {
+    timestamp = Date.parse(value)
+  } else {
+    return '—'
+  }
+  
+  if (isNaN(timestamp)) return '—'
+  
+  // 判断是秒还是毫秒时间戳
+  if (timestamp < 1e12) {
+    timestamp *= 1000
+  }
+  
+  return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+}
+
+// 获取选项标签样式类型
+function getSelectTagType(value: unknown): 'success' | 'warning' | 'error' | 'info' | 'default' {
+  if (typeof value !== 'string') return 'default'
+  
+  // 审批状态
+  if (value === '已通过') return 'success'
+  if (value === '待审批') return 'warning'
+  if (value === '已驳回') return 'error'
+  
+  // 优先级
+  if (value === '紧急' || value === '高') return 'error'
+  if (value === '中') return 'warning'
+  if (value === '低') return 'success'
+  
+  return 'info'
+}
+
+// 下载附件
+function downloadAttachment(file: AttachmentInfo): void {
+  const token = authStore.getAccessToken()
+  const url = file.download_url.startsWith('http')
+    ? file.download_url
+    : `${file.download_url}?token=${encodeURIComponent(token)}`
+  window.open(url, '_blank')
+}
+
+// 获取字段图标
+function getFieldIcon(type: string) {
+  switch (type) {
+    case 'attachment':
+      return ImageIcon
+    case 'date':
+    case 'date-range':
+      return CalendarIcon
+    case 'select':
+    case 'multi-select':
+      return ListIcon
+    case 'boolean':
+      return CheckIcon
+    case 'number':
+      return TagIcon
+    case 'textarea':
+      return TextIcon
+    default:
+      return DocumentIcon
+  }
+}
+
+// ========== 状态相关函数 ==========
+
+// 获取任务状态标签类型
+function statusTagType(status: TaskStatus, isOverdue?: boolean): 'success' | 'error' | 'info' | 'warning' | 'default' {
+  if (isOverdue) return 'error'
+  switch (status) {
+    case 'open':
+      return 'info'
+    case 'claimed':
+      return 'warning'
+    case 'completed':
+      return 'success'
+    case 'canceled':
+      return 'default'
+    default:
+      return 'default'
+  }
+}
+
+// 获取任务状态标签文本
+function statusLabel(status: TaskStatus, isOverdue?: boolean): string {
+  if (isOverdue) return '已超时'
+  switch (status) {
+    case 'open':
+      return '待认领'
+    case 'claimed':
+      return '已认领'
+    case 'completed':
+      return '已完成'
+    case 'canceled':
+      return '已取消'
+    default:
+      return status
+  }
+}
+
+// 格式化日期
+function formatDate(value?: string | null): string {
+  if (!value) return '—'
+  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
+}
+
+// ========== 数据加载函数 ==========
+
+// 加载任务列表
+async function loadTasks() {
+  loading.value = true
+  try {
+    const params: TaskListQuery = {
+      page: pagination.page,
+      page_size: pagination.pageSize,
+      status: filters.status,
+      only_mine: filters.only_mine,
+      include_group_tasks: filters.include_group_tasks,
+      keyword: filters.keyword,
+      sla_level: filters.sla_level
+    }
+    const { data } = await listTasks(params)
+    tasks.value = data.items
+    pagination.total = data.total
+  } catch (error) {
+    console.error('加载任务列表失败:', error)
+    message.error('加载任务列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 加载 SLA 摘要
+async function loadSlaSummary() {
+  summaryLoading.value = true
+  try {
+    const params: TaskListQuery = {
+      status: filters.status,
+      only_mine: filters.only_mine,
+      include_group_tasks: filters.include_group_tasks,
+      keyword: filters.keyword,
+      sla_level: filters.sla_level
+    }
+    const { data } = await getTaskSlaSummary(params)
+    slaSummary.value = data
+  } catch (error) {
+    console.error('加载 SLA 摘要失败:', error)
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+// 加载组任务列表
+async function loadGroupTasks() {
+  groupLoading.value = true
+  try {
+    const { data } = await listGroupTasks({
+      page: groupPagination.page,
+      page_size: groupPagination.pageSize
+    })
+    groupTasks.value = data.items
+    groupPagination.total = data.total
+  } catch (error) {
+    console.error('加载组任务失败:', error)
+  } finally {
+    groupLoading.value = false
+  }
+}
+
+// ========== 筛选相关函数 ==========
+
+// 搜索
+function handleSearch() {
+  pagination.page = 1
+  loadTasks()
+  loadSlaSummary()
+}
+
+// 重置筛选
+function handleReset() {
+  filters.keyword = ''
+  filters.status = null
+  filters.sla_level = null
+  filters.only_mine = true
+  filters.include_group_tasks = true
+  pagination.page = 1
+  loadTasks()
+  loadSlaSummary()
+}
+
+// 即时筛选
+function handleImmediateFilter() {
+  pagination.page = 1
+  loadTasks()
+  loadSlaSummary()
+}
+
+// ========== 分页相关函数 ==========
+
+function handlePageChange(page: number) {
+  pagination.page = page
+  loadTasks()
+}
+
+function handlePageSizeChange(size: number) {
+  pagination.pageSize = size
+  pagination.page = 1
+  loadTasks()
+}
+
+function handleGroupPageChange(page: number) {
+  groupPagination.page = page
+  loadGroupTasks()
+}
+
+function handleGroupPageSizeChange(size: number) {
+  groupPagination.pageSize = size
+  groupPagination.page = 1
+  loadGroupTasks()
+}
+
+// ========== 操作相关函数 ==========
+
+// 查看详情
+function handleViewDetail(row: TaskResponse) {
+  detailTask.value = row
+  detailModalVisible.value = true
+}
+
+// 认领任务
+async function handleClaim(row: TaskResponse) {
+  try {
+    await claimTask(row.id)
+    message.success('认领成功')
+    loadTasks()
+  } catch (error) {
+    console.error('认领失败:', error)
+    message.error('认领失败')
+  }
+}
+
+// 释放任务
+async function handleRelease(row: TaskResponse) {
+  try {
+    await releaseTask(row.id)
+    message.success('释放成功')
+    loadTasks()
+  } catch (error) {
+    console.error('释放失败:', error)
+    message.error('释放失败')
+  }
+}
+
+// 打开审批操作弹窗
+function openActionModal(task: TaskResponse, intent: 'approve' | 'reject') {
+  actionTask.value = task
+  actionIntent.value = intent
+  actionComment.value = ''
+  actionModalVisible.value = true
+}
+
+// 打开转交弹窗
+function openTransferModal(task: TaskResponse) {
+  actionTask.value = task
+  transferForm.target_user_id = null
+  transferForm.message = ''
+  transferModalVisible.value = true
+}
+
+// 提交审批操作
+async function submitAction() {
+  if (!actionTask.value) return
+  
+  actionLoading.value = true
+  try {
+    const payload: TaskActionRequest = {
+      action: actionIntent.value,
+      comment: actionComment.value || undefined
+    }
+    await performTaskAction(actionTask.value.id, payload)
+    message.success(actionIntent.value === 'approve' ? '审批通过' : '已驳回')
+    actionModalVisible.value = false
+    actionComment.value = ''
+    loadTasks()
+    loadSlaSummary()
+  } catch (error) {
+    console.error('审批操作失败:', error)
+    message.error('操作失败，请重试')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+// 提交转交
+async function submitTransfer() {
+  if (!actionTask.value || !transferForm.target_user_id) {
+    message.warning('请输入目标用户 ID')
+    return
+  }
+  
+  transferLoading.value = true
+  try {
+    const payload: TaskTransferRequest = {
+      target_user_id: transferForm.target_user_id,
+      message: transferForm.message || undefined
+    }
+    await transferTask(actionTask.value.id, payload)
+    message.success('转交成功')
+    transferModalVisible.value = false
+    transferForm.target_user_id = null
+    transferForm.message = ''
+    loadTasks()
+    loadSlaSummary()
+  } catch (error) {
+    console.error('转交失败:', error)
+    message.error('转交失败，请重试')
+  } finally {
+    transferLoading.value = false
+  }
+}
+
+// ========== 表格列定义 ==========
+
+const columns: DataTableColumns<TaskResponse> = [
+  {
+    title: 'ID',
+    key: 'id',
+    width: 80
+  },
+  {
+    title: '流程名称',
+    key: 'flow_name',
+    minWidth: 160,
+    ellipsis: { tooltip: true },
+    render(row) {
+      return row.flow_name || '—'
+    }
+  },
+  {
+    title: '节点名称',
+    key: 'node_name',
+    minWidth: 120,
+    render(row) {
+      return row.node_name || '—'
+    }
+  },
+  {
+    title: '提交人',
+    key: 'submitter_name',
+    minWidth: 100,
+    render(row) {
+      return row.submitter_name || '—'
+    }
+  },
+  {
+    title: '状态',
+    key: 'status',
+    width: 100,
+    render(row) {
+      return h(
+        NTag,
+        { type: statusTagType(row.status, row.is_overdue), size: 'small', bordered: false },
+        { default: () => statusLabel(row.status, row.is_overdue) }
+      )
+    }
+  },
+  {
+    title: 'SLA',
+    key: 'sla_level',
+    width: 80,
+    render(row) {
+      const slaLevel = row.sla_level
+      if (!slaLevel || slaLevel === 'unknown') {
+        return h(NTag, { size: 'tiny', type: 'default', bordered: false }, { default: () => '未知' })
+      }
+      const slaMap: Record<string, { type: 'success' | 'warning' | 'error', label: string }> = {
+        normal: { type: 'success', label: '正常' },
+        warning: { type: 'warning', label: '预警' },
+        critical: { type: 'warning', label: '紧急' },
+        expired: { type: 'error', label: '超时' }
+      }
+      const config = slaMap[slaLevel] || { type: 'default', label: slaLevel }
+      return h(NTag, { size: 'tiny', type: config.type, bordered: false }, { default: () => config.label })
+    }
+  },
+  {
+    title: '截止时间',
+    key: 'due_at',
+    width: 160,
+    render(row) {
+      return formatDate(row.due_at)
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'created_at',
+    width: 160,
+    render(row) {
+      return formatDate(row.created_at)
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 320,
+    fixed: 'right',
+    render(row) {
+      const buttons: ReturnType<typeof h>[] = []
+      
+      // 查看详情按钮
+      buttons.push(
+        h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewDetail(row) }, { default: () => '详情' })
+      )
+      
+      if (row.status === 'open') {
+        // 待认领状态：显示认领按钮
+        buttons.push(
+          h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleClaim(row) }, { default: () => '认领' })
+        )
+      } else if (row.status === 'claimed') {
+        // 已认领状态：显示审批操作按钮和释放按钮
+        buttons.push(
+          h(NButton, { text: true, type: 'success', size: 'small', onClick: () => openActionModal(row, 'approve') }, { default: () => '通过' })
+        )
+        buttons.push(
+          h(NButton, { text: true, type: 'error', size: 'small', onClick: () => openActionModal(row, 'reject') }, { default: () => '驳回' })
+        )
+        buttons.push(
+          h(NButton, { text: true, size: 'small', onClick: () => openTransferModal(row) }, { default: () => '转交' })
+        )
+        buttons.push(
+          h(NButton, { text: true, type: 'warning', size: 'small', onClick: () => handleRelease(row) }, { default: () => '释放' })
+        )
+      }
+      
+      return h(NSpace, { size: 'small', wrap: true }, { default: () => buttons })
+    }
+  }
+]
+
+const groupColumns: DataTableColumns<TaskResponse> = [
+  {
+    title: 'ID',
+    key: 'id',
+    width: 80
+  },
+  {
+    title: '流程名称',
+    key: 'flow_name',
+    minWidth: 160,
+    ellipsis: { tooltip: true },
+    render(row) {
+      return row.flow_name || '—'
+    }
+  },
+  {
+    title: '节点名称',
+    key: 'node_name',
+    minWidth: 120,
+    render(row) {
+      return row.node_name || '—'
+    }
+  },
+  {
+    title: '提交人',
+    key: 'submitter_name',
+    minWidth: 100,
+    render(row) {
+      return row.submitter_name || '—'
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'created_at',
+    width: 180,
+    render(row) {
+      return formatDate(row.created_at)
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 200,
+    fixed: 'right',
+    render(row) {
+      return h(
+        'div',
+        { style: 'display: flex; gap: 8px;' },
+        [
+          h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleClaim(row) }, { default: () => '认领' }),
+          h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewDetail(row) }, { default: () => '详情' })
+        ]
+      )
+    }
+  }
+]
+
+// ========== 初始化 ==========
+
+onMounted(() => {
+  loadTasks()
+  loadSlaSummary()
+  loadGroupTasks()
+})
+</script>
+
+<style scoped>
+.approval-list-page {
+  padding: 16px;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.summary-card,
+.filters-card,
+.table-card {
+  margin-bottom: 16px;
+}
+
+.summary-hint {
+  font-size: 12px;
+  color: #909399;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+}
+
+.summary-item {
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.summary-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.summary-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.status-select,
+.sla-select {
+  width: 120px;
+}
+
+.filters-hint {
+  margin-top: 12px;
+}
+
+.table-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.group-hint {
+  font-size: 12px;
+  color: #909399;
+}
+
+.action-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 审批详情弹窗样式 */
+.detail-content {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+}
+
+.detail-left {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+.detail-right {
+  flex: 1;
+  min-width: 0;
+}
+
+.info-card,
+.form-data-card {
+  height: 100%;
+}
+
+.info-card :deep(.n-card__content) {
+  padding: 0;
+}
+
+.form-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-field-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.form-field-item:last-child {
+  border-bottom: none;
+}
+
+.form-field-item:hover {
+  background-color: #f8f9fa;
+}
+
+.form-field-item.field-alt {
+  background-color: #fafbfc;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+
+.field-icon {
+  opacity: 0.7;
+}
+
+.field-value {
+  font-size: 14px;
+  color: #303133;
+  word-break: break-word;
+}
+
+/* 附件样式 */
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.attachment-item {
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.image-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.image-preview :deep(.n-image) {
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.download-btn {
+  margin-top: 4px;
+}
+
+.file-size {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* 日期标签 */
+.date-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 选项标签 */
+.select-tag {
+  font-weight: 500;
+}
+
+/* 数字值 */
+.number-value {
+  font-family: 'DIN Alternate', 'Helvetica Neue', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #409eff;
+}
+
+/* 长文本 */
+.textarea-value {
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 默认文本 */
+.text-value {
+  color: #606266;
+}
+
+/* 空值 */
+.empty-value {
+  color: #c0c4cc;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .detail-content {
+    flex-direction: column;
+  }
+  
+  .detail-left {
+    width: 100%;
+  }
+}
+</style>

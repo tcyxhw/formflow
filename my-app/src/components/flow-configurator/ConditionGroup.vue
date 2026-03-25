@@ -242,128 +242,124 @@ const addGroup = () => {
 .condition-group {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 /* 根组样式 */
 .condition-group:not(.is-nested) {
   background: #ffffff;
-  border: 2px solid #e0e5ec;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: auto;
+  max-height: 100%;
 }
 
 /* 嵌套组样式 */
 .condition-group.is-nested {
-  border-radius: 10px;
-  padding: 16px;
-  background: #f9fbfc;
-  border: 2px solid #d3e8e0;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow: auto;
 }
 
 /* 嵌套深度颜色 */
 .condition-group.is-nested.depth-1 {
-  border-color: #18a058;
-  background: #f6fbf8;
+  border-color: #10b981;
+  background: #f0fdf4;
 }
 
 .condition-group.is-nested.depth-2 {
-  border-color: #2080f0;
-  background: #f0f6ff;
+  border-color: #3b82f6;
+  background: #eff6ff;
 }
 
 .condition-group.is-nested.depth-3 {
-  border-color: #a060d0;
-  background: #faf5ff;
+  border-color: #8b5cf6;
+  background: #f5f3ff;
 }
 
 .condition-group.is-nested.depth-4,
 .condition-group.is-nested.depth-5 {
-  border-color: #f0a020;
-  background: #fffaf0;
+  border-color: #f59e0b;
+  background: #fffbeb;
 }
 
 .group-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, #f6fbf8 0%, #f0f9f4 100%);
+  padding: 12px 16px;
+  background: #f8fafc;
   border-radius: 8px;
-  border: 1px solid #d3e8e0;
+  border: 1px solid #e2e8f0;
   gap: 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
 }
 
 .condition-group.is-nested.depth-1 .group-header {
-  background: linear-gradient(135deg, #e7f5f0 0%, #d9f0e6 100%);
-  border-color: #18a058;
+  background: #f0fdf4;
+  border-color: #10b981;
 }
 
 .condition-group.is-nested.depth-2 .group-header {
-  background: linear-gradient(135deg, #e6f2ff 0%, #d9ebff 100%);
-  border-color: #2080f0;
+  background: #eff6ff;
+  border-color: #3b82f6;
 }
 
 .condition-group.is-nested.depth-3 .group-header {
-  background: linear-gradient(135deg, #f5e6ff 0%, #ead9ff 100%);
-  border-color: #a060d0;
+  background: #f5f3ff;
+  border-color: #8b5cf6;
 }
 
 .condition-group.is-nested.depth-4 .group-header,
 .condition-group.is-nested.depth-5 .group-header {
-  background: linear-gradient(135deg, #fff5e6 0%, #ffe9d9 100%);
-  border-color: #f0a020;
+  background: #fffbeb;
+  border-color: #f59e0b;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex: 1;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .group-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: #18a058;
-  padding: 6px 12px;
-  background: rgba(24, 160, 88, 0.1);
+  font-size: 12px;
+  font-weight: 600;
+  color: #10b981;
+  padding: 4px 10px;
+  background: rgba(16, 185, 129, 0.1);
   border-radius: 6px;
-  border: 1px solid rgba(24, 160, 88, 0.2);
 }
 
 .condition-group.is-nested.depth-1 .group-label {
-  color: #18a058;
-  background: rgba(24, 160, 88, 0.1);
-  border-color: rgba(24, 160, 88, 0.2);
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
 }
 
 .condition-group.is-nested.depth-2 .group-label {
-  color: #2080f0;
-  background: rgba(32, 128, 240, 0.1);
-  border-color: rgba(32, 128, 240, 0.2);
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .condition-group.is-nested.depth-3 .group-label {
-  color: #a060d0;
-  background: rgba(160, 96, 208, 0.1);
-  border-color: rgba(160, 96, 208, 0.2);
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
 }
 
 .condition-group.is-nested.depth-4 .group-label,
 .condition-group.is-nested.depth-5 .group-label {
-  color: #f0a020;
-  background: rgba(240, 160, 32, 0.1);
-  border-color: rgba(240, 160, 32, 0.2);
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
 }
 
 .logic-selector {
@@ -374,29 +370,34 @@ const addGroup = () => {
 
 .logic-label {
   font-size: 13px;
-  color: #6b7385;
-  font-weight: 600;
+  color: #64748b;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .logic-select {
-  min-width: 160px;
+  min-width: 140px;
 }
 
 .delete-group-btn {
   flex-shrink: 0;
+  color: #ef4444;
+}
+
+.delete-group-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .group-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .rules-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .rule-wrapper {
@@ -409,40 +410,39 @@ const addGroup = () => {
 
 .logic-connector {
   text-align: center;
-  font-size: 13px;
-  font-weight: 700;
-  color: #18a058;
-  padding: 8px 0;
-  margin: 8px 0;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  color: #10b981;
+  padding: 4px 0;
+  margin: 4px 0;
+  letter-spacing: 0.5px;
 }
 
 .condition-group.is-nested.depth-1 .logic-connector {
-  color: #18a058;
+  color: #10b981;
 }
 
 .condition-group.is-nested.depth-2 .logic-connector {
-  color: #2080f0;
+  color: #3b82f6;
 }
 
 .condition-group.is-nested.depth-3 .logic-connector {
-  color: #a060d0;
+  color: #8b5cf6;
 }
 
 .condition-group.is-nested.depth-4 .logic-connector,
 .condition-group.is-nested.depth-5 .logic-connector {
-  color: #f0a020;
+  color: #f59e0b;
 }
 
 .group-actions-bottom {
-  padding: 12px 0 0 0;
-  border-top: 2px solid #e0e5ec;
+  padding: 10px 0 0 0;
+  border-top: 1px solid #e2e8f0;
   margin-top: 4px;
 }
 
 .condition-group.is-nested .group-actions-bottom {
-  border-top-color: rgba(0, 0, 0, 0.08);
+  border-top-color: #e2e8f0;
 }
 
 @keyframes slideIn {

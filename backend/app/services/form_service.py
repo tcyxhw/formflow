@@ -333,7 +333,7 @@ class FormService:
         删除表单（允许删除所有状态的表单）
 
         注意：此方法允许删除任何状态的表单（包括已发布的表单）。
-        删除操作会同时删除关联的表单版本和流程定义（如果 cascade=True）。
+        删除操作会同时删除关联的表单版本、权限、分享、草稿和流程定义（如果 cascade=True）。
 
         Args:
             form_id: 表单ID
@@ -345,22 +345,39 @@ class FormService:
         Returns:
             是否删除成功
         """
+        from app.models.form import FormPermission, FormShare, FormDraft
+        
         form = FormService.get_form_by_id(form_id, tenant_id, db)
 
         if form.owner_user_id != user_id:
             raise AuthorizationError("只有创建者可以删除表单")
 
+        # 删除关联的权限记录
+        db.query(FormPermission).filter(
+            FormPermission.form_id == form_id
+        ).delete(synchronize_session=False)
+
+        # 删除关联的分享记录
+        db.query(FormShare).filter(
+            FormShare.form_id == form_id
+        ).delete(synchronize_session=False)
+
+        # 删除关联的草稿记录
+        db.query(FormDraft).filter(
+            FormDraft.form_id == form_id
+        ).delete(synchronize_session=False)
+
         # 删除关联的版本
         db.query(FormVersion).filter(
             FormVersion.form_id == form_id
-        ).delete()
+        ).delete(synchronize_session=False)
 
         # 如果级联删除，删除关联的流程定义
         if cascade and form.flow_definition_id:
             from app.models.workflow import FlowDefinition
             db.query(FlowDefinition).filter(
                 FlowDefinition.id == form.flow_definition_id
-            ).delete()
+            ).delete(synchronize_session=False)
 
         # 删除表单
         db.delete(form)

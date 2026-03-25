@@ -1,6 +1,49 @@
 <!-- src/components/home/DataDashboard.vue -->
 <template>
   <div class="data-dashboard">
+    <!-- 统计卡片 -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon pending">
+          <n-icon size="24"><ClipboardOutline /></n-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.pending_tasks }}</div>
+          <div class="stat-label">待办任务</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon processed">
+          <n-icon size="24"><CheckmarkCircleOutline /></n-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.weekly_processed }}</div>
+          <div class="stat-label">本周处理量</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon time">
+          <n-icon size="24"><TimeOutline /></n-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ formatTime(stats.avg_processing_time_minutes) }}</div>
+          <div class="stat-label">平均处理时长</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon rate">
+          <n-icon size="24"><TrendingUpOutline /></n-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.approval_rate }}%</div>
+          <div class="stat-label">审批通过率</div>
+        </div>
+      </div>
+    </div>
+
     <div class="dashboard-grid">
       <!-- 提交量趋势图 -->
       <div class="chart-card">
@@ -48,7 +91,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { NIcon, NTag } from 'naive-ui'
+import { ClipboardOutline, CheckmarkCircleOutline, TimeOutline, TrendingUpOutline } from '@vicons/ionicons5'
 import { useHomeInteractive } from '@/stores/homeInteractive'
+import { getDashboardStats } from '@/api/dashboard'
+import type { DashboardStats } from '@/types/dashboard'
 
 const store = useHomeInteractive()
 const chartRef1 = ref<HTMLDivElement>()
@@ -56,12 +103,40 @@ const chartRef2 = ref<HTMLDivElement>()
 const chartReady1 = ref(false)
 const chartReady2 = ref(false)
 
+const stats = ref<DashboardStats>({
+  pending_tasks: 0,
+  weekly_processed: 0,
+  avg_processing_time_minutes: 0,
+  approval_rate: 0,
+})
+
 let chart1: echarts.ECharts | null = null
 let chart2: echarts.ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
 
+const formatTime = (minutes: number): string => {
+  if (minutes < 60) {
+    return `${Math.round(minutes)}分钟`
+  }
+  const hours = Math.floor(minutes / 60)
+  const mins = Math.round(minutes % 60)
+  return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`
+}
+
+const fetchStats = async () => {
+  try {
+    const res = await getDashboardStats()
+    if (res.data) {
+      stats.value = res.data
+    }
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+  }
+}
+
 onMounted(async () => {
   await nextTick()
+  fetchStats()
   initCharts()
   setupResizeObserver()
 })
@@ -224,6 +299,91 @@ const setupResizeObserver = () => {
   width: 100%;
 }
 
+/* 统计卡片 Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 统计卡片 */
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  transition: all 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card:hover {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  transform: translateY(-4px);
+}
+
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.stat-icon.pending {
+  background: linear-gradient(135deg, #e8f4ff 0%, #d6e9ff 100%);
+  color: #2080f0;
+}
+
+.stat-icon.processed {
+  background: linear-gradient(135deg, #e8faf0 0%, #d0f0e0 100%);
+  color: #18a058;
+}
+
+.stat-icon.time {
+  background: linear-gradient(135deg, #fff7e6 0%, #ffefd5 100%);
+  color: #f0a020;
+}
+
+.stat-icon.rate {
+  background: linear-gradient(135deg, #f0e6ff 0%, #e0d0ff 100%);
+  color: #7c4dff;
+}
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+}
+
 /* Grid 布局 */
 .dashboard-grid {
   display: grid;
@@ -286,8 +446,30 @@ const setupResizeObserver = () => {
   height: 100%;
 }
 
+.chart-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #999;
+  font-size: 14px;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
+  .stats-grid {
+    gap: 12px;
+  }
+
+  .stat-card {
+    padding: 16px 20px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
   .dashboard-grid {
     gap: 16px;
   }
@@ -315,9 +497,11 @@ const setupResizeObserver = () => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .stat-card,
   .chart-card {
     transition: none;
   }
+  .stat-card:hover,
   .chart-card:hover {
     transform: none;
   }

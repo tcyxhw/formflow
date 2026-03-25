@@ -312,14 +312,28 @@ const exitEdit = () => {
 .page-header {
   margin-bottom: 16px;
   display: flex;
+  align-items: center;
   gap: 12px;
 }
 
 .home-btn {
-  color: #666;
-  
+  color: #374151;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+
   &:hover {
     color: #18a058;
+    background: #f0fdf4;
+    border-color: #86efac;
+    transform: translateX(-2px);
+  }
+
+  &:active {
+    transform: translateX(0);
   }
 }
 

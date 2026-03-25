@@ -576,7 +576,7 @@ class AssignmentService:
             # 发起人当前部门
             dept_id = AssignmentService._get_user_department(initiator_id, tenant_id, db)
             if not dept_id:
-                raise BusinessError("发起人未设置部门")
+                raise BusinessError(f"发起人(ID:{initiator_id})未设置部门，请先在用户管理中为该用户分配部门")
             user_id = AssignmentService._find_users_by_dept_post(
                 dept_id, post_id, tenant_id, db
             )
@@ -595,6 +595,8 @@ class AssignmentService:
     def _get_user_department(user_id: int, tenant_id: int, db: Session) -> Optional[int]:
         """获取用户的主属部门ID。
 
+        优先从 UserDepartmentPost 表获取，如果没有则回退到 User.department_id。
+
         :param user_id: 用户ID
         :param tenant_id: 租户ID
         :param db: 数据库会话
@@ -602,6 +604,22 @@ class AssignmentService:
 
         Time: O(1), Space: O(1)
         """
+        from app.models.user import UserDepartmentPost
+
+        # 优先从 UserDepartmentPost 表获取
+        user_dept_post = (
+            db.query(UserDepartmentPost.department_id)
+            .filter(
+                UserDepartmentPost.user_id == user_id,
+                UserDepartmentPost.tenant_id == tenant_id,
+            )
+            .first()
+        )
+
+        if user_dept_post:
+            return user_dept_post[0]
+
+        # 回退到 User.department_id
         user = (
             db.query(User)
             .filter(
@@ -621,6 +639,8 @@ class AssignmentService:
     ) -> Optional[int]:
         """根据部门和岗位查找用户。
 
+        优先使用 UserDepartmentPost 表查询，如果没有结果则回退到 UserDepartment + UserPosition 联合查询。
+
         :param department_id: 部门ID
         :param post_id: 岗位ID
         :param tenant_id: 租户ID
@@ -629,9 +649,26 @@ class AssignmentService:
 
         Time: O(N), Space: O(N)
         """
-        from app.models.user import UserDepartment, UserPosition
+        from app.models.user import UserDepartmentPost, UserDepartment, UserPosition
 
-        # 查找在指定部门且有指定岗位的用户
+        # 优先使用 UserDepartmentPost 表查询
+        user_ids = (
+            db.query(UserDepartmentPost.user_id)
+            .filter(
+                UserDepartmentPost.department_id == department_id,
+                UserDepartmentPost.post_id == post_id,
+                UserDepartmentPost.tenant_id == tenant_id,
+            )
+            .all()
+        )
+
+        if user_ids:
+            user_id_list = [uid for (uid,) in user_ids]
+            return AssignmentService._pick_best_user_intelligent(
+                {"user_ids": user_id_list}, tenant_id, db
+            )
+
+        # 回退到 UserDepartment + UserPosition 联合查询
         user_dept = (
             db.query(UserDepartment.user_id)
             .filter(
@@ -690,20 +727,11 @@ class AssignmentService:
         """
         from app.models.user import UserDepartmentPost, Department
         
-        # 获取用户当前部门
-        user_dept = (
-            db.query(UserDepartmentPost.department_id)
-            .filter(
-                UserDepartmentPost.user_id == user_id,
-                UserDepartmentPost.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        # 使用 _get_user_department 获取用户的部门ID
+        current_dept_id = AssignmentService._get_user_department(user_id, tenant_id, db)
         
-        if not user_dept:
-            raise BusinessError("用户未设置部门")
-        
-        current_dept_id = user_dept[0]
+        if not current_dept_id:
+            raise BusinessError(f"用户(ID:{user_id})未设置部门，请先在用户管理中为该用户分配部门")
         
         # 逐级向上查找
         while True:
@@ -761,6 +789,8 @@ class AssignmentService:
     ) -> Optional[int]:
         """根据部门和岗位查找单个用户（简化版）。
 
+        优先使用 UserDepartmentPost 表查询，如果没有结果则回退到 UserDepartment + UserPosition 联合查询。
+
         :param department_id: 部门ID
         :param post_id: 岗位ID
         :param tenant_id: 租户ID
@@ -769,9 +799,23 @@ class AssignmentService:
 
         Time: O(N), Space: O(N)
         """
-        from app.models.user import UserDepartment, UserPosition
+        from app.models.user import UserDepartmentPost, UserDepartment, UserPosition
 
-        # 查找在指定部门且有指定岗位的用户
+        # 优先使用 UserDepartmentPost 表查询
+        result = (
+            db.query(UserDepartmentPost.user_id)
+            .filter(
+                UserDepartmentPost.department_id == department_id,
+                UserDepartmentPost.post_id == post_id,
+                UserDepartmentPost.tenant_id == tenant_id,
+            )
+            .first()
+        )
+
+        if result:
+            return result[0]
+
+        # 回退到 UserDepartment + UserPosition 联合查询
         user_dept = (
             db.query(UserDepartment.user_id)
             .filter(

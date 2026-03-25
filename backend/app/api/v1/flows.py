@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, Path
 from sqlalchemy.orm import Session
 
-from app.api.deps import RequireFlowConfiguration, get_current_tenant_id, get_db
+from app.api.deps import RequireFlowConfiguration, get_current_tenant_id, get_db, get_current_user
 from app.models.user import User
 from app.core.exceptions import BusinessError, NotFoundError
 from app.core.response import error_response, success_response
@@ -22,7 +22,7 @@ router = APIRouter()
 @router.get("/{flow_definition_id}", summary="获取流程定义详情")
 async def get_flow_definition(
     flow_definition_id: int = Path(..., ge=1, description="流程定义 ID"),
-    current_user: User = Depends(RequireFlowConfiguration),
+    current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db),
 ):

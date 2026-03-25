@@ -14,6 +14,7 @@
       <div class="search-section">
         <SearchBar
           v-model="filters.keyword"
+          v-model:searchType="filters.searchType"
           placeholder="搜索表单标题或描述..."
           @search="handleSearch"
         />

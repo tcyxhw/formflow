@@ -24,6 +24,7 @@ class FillableFormsQuery(BaseModel):
     category: Optional[str] = Field(default=None, description="表单类别筛选")
     sort_by: str = Field(default="created_at", description="排序字段")
     sort_order: str = Field(default="desc", description="排序方向: asc/desc")
+    search_type: str = Field(default="name", description="搜索类型: name/owner")
 
     @validator("sort_order")
     def validate_sort_order(cls, v: str) -> str:
@@ -33,6 +34,16 @@ class FillableFormsQuery(BaseModel):
         """
         if v not in ["asc", "desc"]:
             raise ValueError("sort_order 必须是 'asc' 或 'desc'")
+        return v
+
+    @validator("search_type")
+    def validate_search_type(cls, v: str) -> str:
+        """验证搜索类型只能是 name 或 owner。
+
+        Time: O(1), Space: O(1)
+        """
+        if v not in ["name", "owner"]:
+            raise ValueError("search_type 必须是 'name' 或 'owner'")
         return v
 
 

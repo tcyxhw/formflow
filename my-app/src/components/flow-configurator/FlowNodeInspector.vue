@@ -276,45 +276,53 @@
     <!-- 自动通过条件编辑模态框 -->
     <n-modal
       v-model:show="showAutoApproveModal"
-      title="编辑自动通过条件"
-      preset="dialog"
-      size="large"
+      preset="card"
+      :style="{ width: '80vw', maxWidth: '1200px' }"
       :mask-closable="false"
       :closable="false"
       :show-icon="false"
     >
-      <AutoConditionEditor
-        v-model="editingAutoApproveCond"
-        title="编辑自动通过条件"
-        subtitle="配置表单字段的条件规则，满足条件时自动通过审批"
-        :form-schema="formSchema"
-        :form-id="formId"
-        :disabled="disabled"
-        @save="saveAutoApproveCondition"
-        @cancel="cancelAutoApproveCondition"
-      />
+      <template #header>
+        <span>编辑自动通过条件</span>
+      </template>
+      <div class="modal-body-wrapper">
+        <AutoConditionEditor
+          v-model="editingAutoApproveCond"
+          title="编辑自动通过条件"
+          subtitle="配置表单字段的条件规则，满足条件时自动通过审批"
+          :form-schema="formSchema"
+          :form-id="formId"
+          :disabled="disabled"
+          @save="saveAutoApproveCondition"
+          @cancel="cancelAutoApproveCondition"
+        />
+      </div>
     </n-modal>
 
     <!-- 自动驳回条件编辑模态框 -->
     <n-modal
       v-model:show="showAutoRejectModal"
-      title="编辑自动驳回条件"
-      preset="dialog"
-      size="large"
+      preset="card"
+      :style="{ width: '80vw', maxWidth: '1200px' }"
       :mask-closable="false"
       :closable="false"
       :show-icon="false"
     >
-      <AutoConditionEditor
-        v-model="editingAutoRejectCond"
-        title="编辑自动驳回条件"
-        subtitle="配置表单字段的条件规则，满足条件时自动驳回审批"
-        :form-schema="formSchema"
-        :form-id="formId"
-        :disabled="disabled"
-        @save="saveAutoRejectCondition"
-        @cancel="cancelAutoRejectCondition"
-      />
+      <template #header>
+        <span>编辑自动驳回条件</span>
+      </template>
+      <div class="modal-body-wrapper">
+        <AutoConditionEditor
+          v-model="editingAutoRejectCond"
+          title="编辑自动驳回条件"
+          subtitle="配置表单字段的条件规则，满足条件时自动驳回审批"
+          :form-schema="formSchema"
+          :form-id="formId"
+          :disabled="disabled"
+          @save="saveAutoRejectCondition"
+          @cancel="cancelAutoRejectCondition"
+        />
+      </div>
     </n-modal>
   </div>
 </template>
@@ -892,5 +900,11 @@ watch(
   color: #6b7385;
   display: flex;
   gap: 12px;
+}
+
+/* 弹窗内容容器 */
+.modal-body-wrapper {
+  height: 65vh;
+  overflow: hidden;
 }
 </style>

@@ -265,10 +265,9 @@ service.interceptors.response.use(
       requestQueue.remove(config)
     }
     
-    // 取消的请求不进行错误处理
+    // 取消的请求静默处理，返回空响应
     if (axios.isCancel(error)) {
-      console.log('Request cancelled:', error.message)
-      return Promise.reject(error)
+      return Promise.resolve({ data: null, status: 0, statusText: 'canceled', headers: {}, config: error.config || {} })
     }
     
     // 重试机制

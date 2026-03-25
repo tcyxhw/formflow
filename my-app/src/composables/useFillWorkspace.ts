@@ -49,7 +49,8 @@ export function useFillWorkspace() {
     status: null,
     category: null,
     sortBy: 'created_at',
-    sortOrder: 'desc'
+    sortOrder: 'desc',
+    searchType: 'name'
   })
   
   // 批量选择状态
@@ -72,7 +73,8 @@ export function useFillWorkspace() {
         status: filters.status || undefined,
         category: filters.category || undefined,
         sort_by: filters.sortBy,
-        sort_order: filters.sortOrder
+        sort_order: filters.sortOrder,
+        search_type: filters.searchType || 'name'
       })
       
       forms.value = data.items

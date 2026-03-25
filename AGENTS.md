@@ -85,9 +85,26 @@ Q5 — 是否有规则在实际执行中感觉不合理？
 
 #### 5.3 证据持久化
 
-仅当 Q3、Q4 或 Q5 发现问题时，将以下内容追加到 `standards/review_evidence.md` 的活跃证据区：
+仅当 Q3、Q4 或 Q5 发现问题时，才考虑写入 `standards/review_evidence.md`。
 
-条目结构：
+写入前必须先判断：这个问题是否真的值得进入 evidence。
+
+只有满足以下任一条件时，才允许写入：
+- 会影响跨文件或跨层一致性
+- 会影响真实功能、接口契约、类型安全、权限、安全、性能、事务或状态流转
+- 在多个位置重复出现，明显具备复用性
+- 现有规则无法指导当前决策，导致必须猜测或临时约定
+- 未来极可能再次出现，并值得形成规则
+
+默认不要写入 evidence 的情况：
+- 纯视觉偏好差异
+- 一次性命名细节
+- 单次格式风格差异
+- 不影响行为的轻微 UI 风格不一致
+- 纯个人审美判断，且没有演化为规则价值
+
+如果满足写入条件，则追加到 `standards/review_evidence.md` 的活跃证据区，条目结构为：
+
 - 标题行：`### [YYYY-MM-DD HH:MM] <类型> | <标题>`
 - 字段：
   - 文件
@@ -112,8 +129,8 @@ Q5 — 是否有规则在实际执行中感觉不合理？
 标签预定义列表：
 `error-handling` / `naming` / `state-management` / `api-contract` / `type-safety` / `file-structure` / `dependency` / `testing` / `security` / `performance` / `concurrency` / `data-model` / `auth` / `config` / `logging`
 
-如果 Q3、Q4、Q5 均无发现，输出：
-本次无盲区，不写入 review_evidence。
+如果 Q3、Q4、Q5 均无发现，或者发现的问题不满足 evidence 写入条件，输出：
+本次无值得沉淀的盲区，不写入 review_evidence。
 
 #### 5.4 历史盲区复查
 

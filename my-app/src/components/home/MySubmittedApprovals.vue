@@ -271,13 +271,64 @@
       </div>
     </div>
 
+    <!-- 详情抽屉 -->
+    <n-drawer v-model:show="showDetailDrawer" :width="600" placement="right">
+      <n-drawer-content title="审批详情" closable>
+        <template v-if="selectedApproval">
+          <div class="drawer-detail">
+            <!-- 基本信息 -->
+            <div class="detail-section">
+              <h4 class="section-title">基本信息</h4>
+              <n-descriptions label-placement="left" :column="1" bordered size="small">
+                <n-descriptions-item label="表单名称">
+                  {{ selectedApproval.form_name || '未知表单' }}
+                </n-descriptions-item>
+                <n-descriptions-item label="提交编号">
+                  {{ selectedApproval.id }}
+                </n-descriptions-item>
+                <n-descriptions-item label="提交时间">
+                  {{ formatDateTime(selectedApproval.created_at) }}
+                </n-descriptions-item>
+                <n-descriptions-item label="当前状态">
+                  <n-tag
+                    :type="getStateType(selectedApproval.process_state, selectedApproval.is_overdue)"
+                    size="small"
+                    :bordered="false"
+                    round
+                  >
+                    {{ getStateLabel(selectedApproval.process_state, selectedApproval.is_overdue) }}
+                  </n-tag>
+                </n-descriptions-item>
+                <n-descriptions-item v-if="selectedApproval.due_at" label="截止时间">
+                  {{ formatDateTime(selectedApproval.due_at) }}
+                </n-descriptions-item>
+              </n-descriptions>
+            </div>
+
+            <!-- 流程图 -->
+            <div class="detail-section">
+              <h4 class="section-title">审批流程图</h4>
+              <n-spin :show="flowLoading">
+                <div v-if="flowNodes.length > 0" class="flow-diagram-wrapper">
+                  <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" />
+                </div>
+                <div v-else class="empty-flow">
+                  <p>暂无流程配置</p>
+                </div>
+              </n-spin>
+            </div>
+          </div>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useMessage, NDescriptions, NDescriptionsItem, NTag, NSpin, NDrawer, NDrawerContent } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useMySubmittedApprovals } from '@/stores/mySubmittedApprovals'
 import FlowDiagram from '@/components/form/FlowDiagram.vue'
@@ -288,6 +339,9 @@ const store = useMySubmittedApprovals()
 
 const { approvalList, loading, selectedApproval, stats, flowNodes, flowRoutes, flowLoading } = storeToRefs(store)
 const { loadMyApprovals, selectApproval, getStateType, getStateLabel } = store
+
+// 抽屉显示状态
+const showDetailDrawer = ref(false)
 
 onMounted(() => {
   loadMyApprovals()
@@ -308,7 +362,7 @@ const goToCreate = () => {
 
 const viewDetail = () => {
   if (!selectedApproval.value) return
-  router.push(`/submissions/${selectedApproval.value.id}`)
+  showDetailDrawer.value = true
 }
 
 const formatTime = (dateStr: string): string => {
@@ -1226,5 +1280,51 @@ const currentTaskClaimStatus = computed(() => {
 
 .approval-list::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* 抽屉样式 */
+.drawer-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.flow-diagram-wrapper {
+  min-height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.empty-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #94a3b8;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px dashed #e2e8f0;
+}
+
+.empty-flow p {
+  margin: 0;
+  font-size: 14px;
 }
 </style>

@@ -44,6 +44,7 @@ export interface FillableFormsQuery {
   category?: string
   sort_by?: string
   sort_order?: 'asc' | 'desc'
+  search_type?: 'name' | 'owner'
 }
 
 /**
@@ -56,6 +57,7 @@ export interface FilterState {
   sortBy: string
   sortOrder: 'asc' | 'desc'
   dateRange?: { start: string; end: string } | null
+  searchType?: 'name' | 'owner'
 }
 
 /**

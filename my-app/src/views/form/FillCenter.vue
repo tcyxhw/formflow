@@ -1,8 +1,8 @@
 <template>
   <div class="fill-center">
-    <!-- 页面标题 -->
-    <header class="page-header">
-      <div class="header-content">
+    <!-- 左侧边栏 -->
+    <aside class="left-sidebar">
+      <div class="sidebar-header">
         <div class="header-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -14,35 +14,21 @@
         </div>
         <div class="header-text">
           <h1>表单填写中心</h1>
-          <p class="subtitle">填写您有权限的表单，查看历史提交记录</p>
-        </div>
-        <div class="header-actions">
-          <n-button @click="goHome" quaternary class="home-btn">
-            <template #icon>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                <polyline points="9 22 9 12 15 12 15 22"></polyline>
-              </svg>
-            </template>
-            返回主页
-          </n-button>
+          <p class="subtitle">填写您有权限的表单</p>
         </div>
       </div>
-    </header>
 
-    <!-- 搜索和筛选区域 -->
-    <div class="filter-section">
-      <div class="filter-content">
+      <!-- 搜索和筛选区域 -->
+      <div class="filter-section">
         <div class="search-box">
           <n-input
             v-model:value="filters.keyword"
             placeholder="搜索表单名称..."
             clearable
-            size="large"
             @update:value="handleSearch"
           >
             <template #prefix>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                 <circle cx="11" cy="11" r="8"></circle>
                 <path d="m21 21-4.35-4.35"></path>
               </svg>
@@ -50,32 +36,19 @@
           </n-input>
         </div>
 
-        <div class="filter-divider"></div>
-
         <div class="filter-group">
           <n-select
             v-model:value="filters.category"
             placeholder="全部分类"
             clearable
             filterable
-            size="medium"
+            size="small"
             :options="categoryOptions"
             @update:value="handleFilterChange"
           />
-
-          <n-select
-            v-model:value="filters.ownerName"
-            placeholder="全部发布人"
-            clearable
-            filterable
-            size="medium"
-            :options="ownerOptions"
-            @update:value="handleFilterChange"
-          />
-
-          <n-button @click="handleReset" quaternary circle size="large" title="重置筛选">
+          <n-button @click="handleReset" quaternary circle size="small" title="重置筛选">
             <template #icon>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                 <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
                 <path d="M21 3v5h-5"></path>
                 <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
@@ -85,301 +58,208 @@
           </n-button>
         </div>
       </div>
-    </div>
-
-    <!-- 第一部分：可填写的表单列表 -->
-    <section class="section">
-      <div class="section-header">
-        <div class="section-title">
-          <div class="title-icon blue">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-          </div>
-          <div class="title-text">
-            <h2>可填写的表单</h2>
-            <span class="count">{{ filteredForms.length }} / {{ fillableForms.length }} 个表单</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 加载状态 -->
-      <div v-if="loadingFillable" class="loading-state">
-        <n-spin size="large" />
-        <p>正在加载表单列表...</p>
-      </div>
-
-      <!-- 错误状态 -->
-      <div v-else-if="fillableError" class="error-state">
-        <div class="error-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-        </div>
-        <p>{{ fillableError }}</p>
-        <n-button @click="loadFillableForms" type="primary">重新加载</n-button>
-      </div>
-
-      <!-- 空状态 -->
-      <div v-else-if="filteredForms.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-          </svg>
-        </div>
-        <h3>{{ fillableForms.length === 0 ? '暂无可填写的表单' : '没有符合条件的表单' }}</h3>
-        <p v-if="fillableForms.length === 0">请联系管理员为您分配表单填写权限</p>
-        <p v-else>请尝试调整筛选条件</p>
-      </div>
 
       <!-- 表单列表 -->
-      <div v-else class="form-list-container">
-        <div class="form-grid">
+      <div class="form-list-section">
+        <div class="section-header">
+          <h3>可填写的表单</h3>
+          <span class="count">{{ filteredForms.length }} / {{ fillableForms.length }}</span>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="loadingFillable" class="loading-state">
+          <n-spin size="medium" />
+          <p>加载中...</p>
+        </div>
+
+        <!-- 错误状态 -->
+        <div v-else-if="fillableError" class="error-state">
+          <p>{{ fillableError }}</p>
+          <n-button @click="loadFillableForms" size="small">重新加载</n-button>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-else-if="filteredForms.length === 0" class="empty-state">
+          <p>暂无可填写的表单</p>
+        </div>
+
+        <!-- 表单列表 -->
+        <div v-else class="form-list">
           <div
             v-for="form in filteredForms"
             :key="form.id"
-            class="form-card"
-            :class="{ 'submitted': hasSubmitted(form.id) }"
-            @click="handleFillForm(form.id)"
+            class="form-list-item"
+            :class="{ 'submitted': hasSubmitted(form.id), 'active': selectedFormId === form.id }"
+            @click="selectForm(form)"
           >
-            <div class="form-card-header">
-              <div class="form-title-row">
-                <h3>{{ form.name }}</h3>
-                <n-tag v-if="form.category" size="small" :type="getCategoryType(form.category)" class="category-tag">
-                  {{ form.category }}
-                </n-tag>
-              </div>
-              <div v-if="hasSubmitted(form.id)" class="submitted-badge">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                  <polyline points="20 6 9 17 4 12"></polyline>
+            <div class="form-item-header">
+              <div class="form-name">{{ form.name }}</div>
+              <n-tag v-if="form.category" size="tiny" :type="getCategoryType(form.category)">
+                {{ form.category }}
+              </n-tag>
+            </div>
+            <div class="form-item-meta">
+              <span class="meta-item">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-                已填写
+                {{ form.owner_name }}
+              </span>
+              <span class="meta-item" v-if="form.submit_deadline">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                {{ formatDate(form.submit_deadline) }}
+              </span>
+            </div>
+            <div class="form-item-status" v-if="hasSubmitted(form.id)">
+              <n-tag size="tiny" type="success">已填写</n-tag>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右侧主内容区 -->
+    <main class="main-content">
+      <!-- 顶部导航 -->
+      <header class="content-header">
+        <div class="header-left">
+          <n-button text @click="goHome" class="back-btn">
+            <template #icon>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+            </template>
+            返回主页
+          </n-button>
+          <div class="breadcrumb" v-if="selectedForm">
+            <span class="breadcrumb-item">填写中心</span>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-item active">{{ selectedForm.name }}</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <n-button type="primary" @click="selectedForm && handleFillForm(selectedForm.id)" :disabled="!selectedForm">
+            <template #icon>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </template>
+            {{ selectedForm && hasSubmitted(selectedForm.id) ? '再次填写' : '开始填写' }}
+          </n-button>
+        </div>
+      </header>
+
+      <!-- 内容区域 -->
+      <div class="content-body">
+        <!-- 未选择表单时的占位 -->
+        <div v-if="!selectedForm" class="empty-placeholder">
+          <div class="placeholder-content">
+            <div class="placeholder-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+            </div>
+            <h3>选择表单开始填写</h3>
+            <p>从左侧列表中选择一个表单开始填写</p>
+          </div>
+        </div>
+
+        <!-- 选择表单后的详情 -->
+        <div v-else class="form-detail">
+          <!-- 表单信息 -->
+          <div class="form-info-card">
+            <div class="info-header">
+              <h2>{{ selectedForm.name }}</h2>
+              <n-tag v-if="selectedForm.category" :type="getCategoryType(selectedForm.category)">
+                {{ selectedForm.category }}
+              </n-tag>
+            </div>
+            <div class="info-meta">
+              <div class="meta-row">
+                <span class="meta-label">发布人：</span>
+                <span class="meta-value">{{ selectedForm.owner_name }}</span>
+              </div>
+              <div class="meta-row" v-if="selectedForm.submit_deadline">
+                <span class="meta-label">截止时间：</span>
+                <span class="meta-value" :class="{ 'urgent': isDeadlineUrgent(selectedForm.submit_deadline) }">
+                  {{ formatDateTime(selectedForm.submit_deadline) }}
+                </span>
+              </div>
+              <div class="meta-row" v-if="selectedForm.description">
+                <span class="meta-label">表单描述：</span>
+                <span class="meta-value">{{ selectedForm.description }}</span>
               </div>
             </div>
-            
-            <div class="form-card-body">
-              <div class="form-meta">
-                <span class="meta-item">
-                  <span class="meta-icon user">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                      <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
-                  </span>
-                  <span class="meta-label">发布人</span>
-                  <span class="meta-value">{{ form.owner_name }}</span>
-                </span>
-                
-                <span v-if="form.submit_deadline" class="meta-item">
-                  <span class="meta-icon deadline">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                  </span>
-                  <span class="meta-label">截止时间</span>
-                  <span class="meta-value" :class="{ 'urgent': isDeadlineUrgent(form.submit_deadline) }">
-                    {{ formatDate(form.submit_deadline) }}
-                  </span>
-                </span>
-              </div>
+          </div>
+
+          <!-- 填写记录 -->
+          <div class="submission-history">
+            <div class="section-header">
+              <h3>我的填写记录</h3>
+              <span class="count">{{ filteredSubmissions.length }} 条记录</span>
             </div>
-            
-            <div class="form-card-footer">
-              <n-button 
-                :type="hasSubmitted(form.id) ? 'default' : 'primary'" 
-                size="medium" 
-                block
-                class="action-btn"
+
+            <!-- 搜索区域 -->
+            <div class="submission-search">
+              <n-input
+                v-model:value="submissionKeyword"
+                placeholder="搜索填写记录..."
+                clearable
+                size="small"
               >
-                <template #icon>
-                  <svg v-if="!hasSubmitted(form.id)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                  <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                <template #prefix>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
                   </svg>
                 </template>
-                {{ hasSubmitted(form.id) ? '再次填写' : '开始填写' }}
-              </n-button>
+              </n-input>
             </div>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- 第二部分：已填写的表单记录 -->
-    <section class="section">
-      <div class="section-header">
-        <div class="section-title">
-          <div class="title-icon green">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-          </div>
-          <div class="title-text">
-            <h2>我的填写记录</h2>
-            <span class="count">{{ filteredSubmissions.length }} / {{ mySubmissions.length }} 条记录</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 搜索区域 -->
-      <div class="submission-search-section">
-        <n-input
-          v-model:value="submissionKeyword"
-          placeholder="搜索已提交的表单..."
-          clearable
-          size="medium"
-        >
-          <template #prefix>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.35-4.35"></path>
-            </svg>
-          </template>
-        </n-input>
-      </div>
-
-      <!-- 加载状态 -->
-      <div v-if="loadingSubmissions" class="loading-state">
-        <n-spin size="large" />
-        <p>正在加载填写记录...</p>
-      </div>
-
-      <!-- 错误状态 -->
-      <div v-else-if="submissionsError" class="error-state">
-        <div class="error-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-        </div>
-        <p>{{ submissionsError }}</p>
-        <n-button @click="loadMySubmissions" type="primary">重新加载</n-button>
-      </div>
-
-      <!-- 空状态 -->
-      <div v-else-if="mySubmissions.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
-        </div>
-        <h3>暂无填写记录</h3>
-        <p>您还没有提交过任何表单</p>
-      </div>
-
-      <!-- 无搜索结果 -->
-      <div v-else-if="filteredSubmissions.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
-        </div>
-        <h3>没有找到匹配的记录</h3>
-        <p>请尝试其他搜索关键词</p>
-      </div>
-
-      <!-- 提交记录列表 -->
-      <div v-else class="submission-list-container">
-        <div class="submission-list">
-          <div
-            v-for="submission in filteredSubmissions"
-            :key="submission.id"
-            class="submission-card"
-            :class="submission.status"
-          >
-            <!-- 左侧状态条 -->
-            <div class="status-bar" :class="submission.status"></div>
-            
-            <!-- 主体内容 -->
-            <div class="card-content">
-              <div class="content-header">
-                <div class="form-info">
-                  <h4 class="form-name">{{ submission.form_name }}</h4>
-                  <div class="submit-time">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                      <line x1="16" y1="2" x2="16" y2="6"></line>
-                      <line x1="8" y1="2" x2="8" y2="6"></line>
-                      <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg>
-                    <span>{{ formatDateTime(submission.created_at) }}</span>
-                  </div>
+            <!-- 记录列表 -->
+            <div class="submission-list">
+              <div
+                v-for="submission in filteredSubmissions"
+                :key="submission.id"
+                class="submission-list-item"
+                :class="submission.status"
+              >
+                <div class="submission-item-header">
+                  <div class="submission-time">{{ formatDateTime(submission.created_at) }}</div>
+                  <n-tag :type="getStatusType(submission.status)" size="small">
+                    {{ getStatusText(submission.status) }}
+                  </n-tag>
                 </div>
-                
-                <div class="status-wrapper">
-                  <div class="status-badge" :class="submission.status">
-                    <span class="status-dot"></span>
-                    <span class="status-text">{{ getStatusText(submission.status) }}</span>
-                  </div>
+                <div class="submission-item-meta">
+                  <span class="record-id">记录编号: #{{ submission.id }}</span>
                 </div>
-              </div>
-              
-              <div class="content-divider"></div>
-              
-              <div class="content-footer">
-                <div class="record-id">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                  </svg>
-                  <span>记录编号: #{{ submission.id }}</span>
-                </div>
-                
-                <div class="action-buttons">
-                  <n-button 
-                    size="small" 
-                    quaternary 
-                    class="action-btn view"
-                    @click.stop="handleViewSubmission(submission.id)"
-                  >
-                    <template #icon>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    </template>
+                <div class="submission-item-actions">
+                  <n-button size="small" quaternary @click.stop="handleViewSubmission(submission.id)">
                     查看详情
                   </n-button>
-                  <n-button 
-                    type="primary" 
-                    size="small" 
-                    class="action-btn edit"
-                    @click.stop="handleEditSubmission(submission)"
-                  >
-                    <template #icon>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                      </svg>
-                    </template>
+                  <n-button size="small" type="primary" quaternary @click.stop="handleEditSubmission(submission)">
                     编辑
                   </n-button>
                 </div>
               </div>
+
+              <div v-if="filteredSubmissions.length === 0" class="empty-submissions">
+                <p>暂无填写记录</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </section>
+    </main>
   </div>
 </template>
 
@@ -400,6 +280,17 @@ const message = useMessage()
 const fillableForms = ref<FillableFormItem[]>([])
 const loadingFillable = ref(false)
 const fillableError = ref<string | null>(null)
+
+// 选中的表单
+const selectedFormId = ref<number | null>(null)
+const selectedForm = computed(() => {
+  if (!selectedFormId.value) return null
+  return fillableForms.value.find(f => f.id === selectedFormId.value) || null
+})
+
+const selectForm = (form: FillableFormItem) => {
+  selectedFormId.value = form.id
+}
 
 // 我的提交记录
 const mySubmissions = ref<SubmissionListItem[]>([])
@@ -1368,6 +1259,449 @@ onMounted(() => {
 
   .action-buttons :deep(.n-button) {
     flex: 1;
+  }
+}
+
+/* 新的左右布局样式 */
+.fill-center {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  min-height: 100vh;
+  background: #f8fafc;
+  margin: 0;
+  padding: 0;
+  max-width: none;
+}
+
+/* 左侧边栏 */
+.left-sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+}
+
+.sidebar-header .header-icon {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-header .header-text h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.sidebar-header .header-text .subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* 过滤区域 */
+.filter-section {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.search-box {
+  margin-bottom: 12px;
+}
+
+.filter-group {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-group .n-select {
+  flex: 1;
+}
+
+/* 表单列表区域 */
+.form-list-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.form-list-section .section-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.form-list-section .section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a202c;
+}
+
+.form-list-section .section-header .count {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.form-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.form-list-item {
+  padding: 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+  border: 1px solid transparent;
+}
+
+.form-list-item:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.form-list-item.active {
+  background: #f0f5ff;
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+}
+
+.form-list-item.submitted {
+  border-left: 4px solid #10b981;
+}
+
+.form-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.form-item-header .form-name {
+  font-weight: 600;
+  color: #1a202c;
+  font-size: 14px;
+  line-height: 1.4;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.form-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-item-meta .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.form-item-status {
+  margin-top: 8px;
+}
+
+/* 右侧主内容区 */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-header {
+  padding: 16px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.back-btn {
+  color: #64748b;
+}
+
+.back-btn:hover {
+  color: #667eea;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.breadcrumb-item {
+  color: #64748b;
+}
+
+.breadcrumb-item.active {
+  color: #1a202c;
+  font-weight: 500;
+}
+
+.breadcrumb-separator {
+  color: #cbd5e0;
+}
+
+.header-right {
+  display: flex;
+  gap: 12px;
+}
+
+.content-body {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: #f8fafc;
+}
+
+/* 空占位符 */
+.empty-placeholder {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #64748b;
+}
+
+.placeholder-icon {
+  width: 120px;
+  height: 120px;
+  background: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+}
+
+.placeholder-content h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: #1a202c;
+}
+
+.placeholder-content p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* 表单详情 */
+.form-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-info-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.info-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.info-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.meta-row {
+  display: flex;
+  gap: 8px;
+}
+
+.meta-label {
+  color: #64748b;
+  font-size: 14px;
+  min-width: 80px;
+}
+
+.meta-value {
+  color: #1a202c;
+  font-size: 14px;
+}
+
+.meta-value.urgent {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+/* 填写记录 */
+.submission-history {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.submission-history .section-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.submission-history .section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a202c;
+}
+
+.submission-search {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.submission-list {
+  padding: 8px;
+}
+
+.submission-list-item {
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.submission-list-item:hover {
+  border-color: #cbd5e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.submission-list-item.submitted {
+  border-left: 4px solid #3b82f6;
+}
+
+.submission-list-item.draft {
+  border-left: 4px solid #f59e0b;
+}
+
+.submission-list-item.approved {
+  border-left: 4px solid #10b981;
+}
+
+.submission-list-item.rejected {
+  border-left: 4px solid #ef4444;
+}
+
+.submission-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.submission-time {
+  font-weight: 500;
+  color: #1a202c;
+  font-size: 14px;
+}
+
+.submission-item-meta {
+  margin-bottom: 12px;
+}
+
+.record-id {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.submission-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-submissions {
+  text-align: center;
+  padding: 40px 24px;
+  color: #64748b;
+}
+
+/* 加载和错误状态 */
+.loading-state,
+.error-state,
+.empty-state {
+  text-align: center;
+  padding: 40px 24px;
+  color: #64748b;
+}
+
+.loading-state p,
+.error-state p,
+.empty-state p {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .fill-center {
+    grid-template-columns: 1fr;
+  }
+  
+  .left-sidebar {
+    max-height: 400px;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
   }
 }
 </style>

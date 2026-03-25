@@ -173,6 +173,18 @@ const authRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/user/Profile.vue'),
     meta: { title: '个人信息' }
   },
+  {
+    path: '/my-approvals',
+    name: 'MyApprovals',
+    component: () => import('@/views/MyApprovals.vue'),
+    meta: { title: '我的审批', requiresAuth: true }
+  },
+  {
+    path: '/department/import',
+    name: 'DepartmentImport',
+    component: () => import('@/views/DepartmentImport.vue'),
+    meta: { title: '岗位导入', requiresAuth: true }
+  },
 
   // ========== 管理员路由 ==========
   {

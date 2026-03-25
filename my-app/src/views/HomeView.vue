@@ -1,104 +1,95 @@
 <!-- src/views/HomeView.vue -->
 <template>
-  <div class="home-shell noise">
-    <section class="hero section section--cut">
-      <div class="hero-sky" ref="particlesRef" aria-hidden="true"></div>
-      <div class="hero-shapes" aria-hidden="true">
-        <span class="hero-shard hero-shard--left"></span>
-        <span class="hero-shard hero-shard--right"></span>
-        <span class="hero-orb hero-orb--one"></span>
-        <span class="hero-orb hero-orb--two"></span>
-      </div>
-      <div class="hero-shell">
-        <div class="hero-horizon">
-          <header class="hero-topbar" aria-label="产品导航">
-            <div class="hero-topbar__inner">
-              <div class="hero-brand">
-                <span class="brand-mark">FF</span>
-                <div class="brand-meta">
-                  <p class="eyebrow">Dark-Platinum</p>
-                  <strong>FormFlow Control</strong>
-                </div>
-              </div>
-              <nav class="hero-topnav">
-                <button
-                  v-for="link in navLinks"
-                  :key="link.route"
-                  type="button"
-                  class="nav-item"
-                  :class="{ active: isActiveLink(link.route) }"
-                  :aria-label="link.description"
-                  @click="handleNav(link.route)"
-                >
-                  <span class="nav-label">{{ link.label }}</span>
-                  <span class="nav-desc">{{ link.description }}</span>
-                  <span v-if="link.badge" class="nav-badge">{{ link.badge }}</span>
-                </button>
-              </nav>
-              <div class="hero-account">
-                <n-dropdown
-                  :options="accountMenuOptions"
-                  @select="handleAccountMenuSelect"
-                  trigger="click"
-                >
-                  <button type="button" class="account-btn">
-                    <n-avatar
-                      v-if="isLoggedIn && userAvatarUrl"
-                      :src="userAvatarUrl"
-                      :size="40"
-                      round
-                      class="account-avatar-img"
-                    />
-                    <span
-                      v-else
-                      class="account-avatar"
-                      :class="{ 'account-avatar--ghost': !isLoggedIn }"
-                      aria-hidden="true"
-                    >
-                      {{ isLoggedIn ? userInitials : '↗' }}
-                    </span>
-                    <div class="account-meta">
-                      <span class="account-name">{{ isLoggedIn ? userDisplayName : '登录 / 注册' }}</span>
-                      <span class="account-link">{{ isLoggedIn ? '个人信息' : '前往登录' }}</span>
-                    </div>
-                  </button>
-                </n-dropdown>
-              </div>
+  <div class="home-shell">
+    <!-- 顶部导航栏 -->
+    <header class="top-nav">
+      <div class="top-nav__inner">
+        <div class="nav-brand">
+          <div class="brand-mark">FF</div>
+          <span class="brand-name">FormFlow</span>
+        </div>
+        
+        <nav class="nav-menu">
+          <button type="button" class="nav-item" @click="handleNav('/approvals')">
+            <span>审批控制台</span>
+            <span class="nav-badge">5+</span>
+          </button>
+          <button type="button" class="nav-item" @click="handleNav('/my-approvals')">我的审批</button>
+          <button type="button" class="nav-item" @click="handleNav('/form/designer')">表单搭建</button>
+          <button type="button" class="nav-item" @click="handleNav('/form/list')">表单管理</button>
+          <button type="button" class="nav-item" @click="handleNav('/form/fill-center')">填写工作台</button>
+          <button type="button" class="nav-item" @click="handleNav('/submissions')">提交记录</button>
+          
+          <!-- 管理下拉组 -->
+          <div class="nav-group" @mouseenter="activeGroup = 'admin'" @mouseleave="activeGroup = null" v-if="canAccessImport || isAdmin">
+            <button type="button" class="nav-item">管理</button>
+            <div class="nav-dropdown" v-show="activeGroup === 'admin'">
+              <button class="dropdown-item" @click="handleNav('/department/import')" v-if="canAccessImport">岗位导入</button>
+              <button class="dropdown-item" @click="handleNav('/admin/batch-import')" v-if="isAdmin">批量导入</button>
             </div>
-          </header>
-          <div class="hero-grid">
-            <div class="hero-grid__inner">
-              <div class="hero-content" ref="spotlightRef">
-                <div class="hero-text-block">
-                  <h2 class="hero-text__title">氛围亮度自适应</h2>
-                  <p class="hero-text__subtitle">让每一次输入都保持清晰与质感</p>
-                  <p class="hero-text__accent">QUANTUM ACCESS DECK</p>
-                </div>
+          </div>
+        </nav>
+        
+        <div class="nav-actions">
+          <template v-if="isLoggedIn">
+            <div class="user-info" @click="handleAccountClick">
+              <div class="user-avatar-small">
+                <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" />
+                <span v-else>{{ userInitials }}</span>
               </div>
-              <div class="hero-terminal">
-                <div class="terminal-head">
-                  <div>
-                    <p class="eyebrow">AI 表单生成</p>
-                    <h3>自然语言 · 即刻出表</h3>
-                  </div>
-                  <n-tag type="primary" size="small" :bordered="false">Beta</n-tag>
-                </div>
-                <HeroNLGenerator />
-                <div class="terminal-foot">
-                  <div>
-                    <span>当前场景</span>
-                    <strong>智能审批</strong>
-                  </div>
-                  <div>
-                    <span>LCP 目标</span>
-                    <strong>≤ 2.2s</strong>
-                  </div>
-                  <div>
-                    <span>INP 目标</span>
-                    <strong>≤ 160ms</strong>
-                  </div>
-                </div>
-              </div>
+              <span class="user-name">{{ userDisplayName }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <button class="btn-signin" @click="router.push('/login')">Sign In</button>
+          </template>
+          <button class="btn-get-started" @click="router.push('/form/designer')">Get Started</button>
+        </div>
+      </div>
+    </header>
+    
+    <!-- 首页主要内容 -->
+    <section class="hero">
+      <div class="hero-content">
+        <!-- 左侧：品牌信息 -->
+        <div class="hero-text-section">
+          <p class="hero-eyebrow">高校低代码平台</p>
+          <h1 class="hero-title">FormFlow</h1>
+          <p class="hero-subtitle">高校多租户表单设计与智能审批平台</p>
+          <p class="hero-desc">专为高校打造的低代码表单搭建与审批流转系统，支持拖拽式表单设计、多级审批流程配置、AI 辅助生成，让教务、行政、学生事务的表单与审批工作告别纸质与 Excel，走向数字化与自动化。</p>
+          <div class="hero-features">
+            <div class="feature-item">
+              <span class="feature-icon">✦</span>
+              <span>拖拽式表单设计</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-icon">✦</span>
+              <span>多级审批流程配置</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-icon">✦</span>
+              <span>AI 智能生成</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-icon">✦</span>
+              <span>多租户数据隔离</span>
+            </div>
+          </div>
+          <div class="hero-buttons">
+            <button class="btn-primary" @click="router.push('/form/designer')">免费试用</button>
+            <button class="btn-secondary" @click="router.push('/form/list')">查看演示</button>
+          </div>
+        </div>
+        
+        <!-- 右侧：产品展示 -->
+        <div class="hero-image-section">
+          <div class="product-showcase">
+            <div class="showcase-header">
+              <span class="showcase-title">AI 表单生成</span>
+              <span class="showcase-badge">Beta</span>
+            </div>
+            <div class="showcase-body">
+              <HeroNLGenerator />
             </div>
           </div>
         </div>
@@ -306,7 +297,6 @@ import LogoutButton from '@/components/LogoutButton.vue'
 
 interface NavLink {
   label: string
-  description: string
   route: string
   badge?: string | number
 }
@@ -321,6 +311,7 @@ const spotlightRef = ref<HTMLElement | null>(null)
 const cleanupFns: Array<() => void> = []
 const commandSnippet = 'npx formflow sync --tenant campus'
 let animationId: number | null = null
+const activeGroup = ref<string | null>(null)
 
 const logos = ['Rakuten', 'Admiral', 'tokopedia', 'fiserv.', 'Trustt', 'Airwallex', 'Plume', 'VinAudit']
 
@@ -339,44 +330,26 @@ const useCases = [
   }
 ]
 
-const navLinks: NavLink[] = [
-  {
-    label: '审批控制台',
-    description: '待办优先级 + 风险雷达',
-    route: '/approvals',
-    badge: '5+'
-  },
-  {
-    label: '表单搭建',
-    description: '拖拽 + AI Builder',
-    route: '/form/designer'
-  },
-  {
-    label: '表单管理',
-    description: '模板 / 版本 / 协作',
-    route: '/form/list'
-  },
-  {
-    label: '填写工作台',
-    description: '历史记录一键回填',
-    route: '/form/fill-center'
-  },
-  {
-    label: '提交记录',
-    description: '草稿 / 导出 / 编辑',
-    route: '/submissions'
-  },
-  {
-    label: '个人信息',
-    description: '资料 / 偏好 / 安全',
-    route: '/user/profile'
-  },
-  {
-    label: '登录 / 注册',
-    description: '接入团队 / 切换身份',
-    route: '/login'
+// 计算属性：是否可以访问岗位导入
+const canAccessImport = computed(() => {
+  return authStore.userInfo?.department_id && authStore.userInfo?.positions?.length > 0
+})
+
+// 计算属性：是否是管理员
+const isAdmin = computed(() => {
+  return authStore.userInfo?.roles?.some((r: string) => r === 'admin' || r === '系统管理员')
+})
+
+// 判断分组是否激活
+const isActiveGroup = (group: string) => {
+  const groupRoutes: Record<string, string[]> = {
+    approval: ['/my-approvals', '/approvals'],
+    form: ['/form/designer', '/form/list'],
+    workspace: ['/form/fill-center', '/submissions'],
+    admin: ['/department/import', '/admin/batch-import']
   }
-]
+  return groupRoutes[group]?.some(r => route.path.startsWith(r))
+}
 
 const isLoggedIn = computed(() => authStore.isLoggedIn)
 const userDisplayName = computed(() => authStore.userInfo?.name || authStore.userInfo?.account || 'FormFlow 用户')
@@ -402,6 +375,10 @@ const handleNav = (target: string) => {
   }
 }
 
+const goHome = () => {
+  router.push('/')
+}
+
 const handleAccountClick = () => {
   router.push(isLoggedIn.value ? '/user/profile' : '/login')
 }
@@ -413,10 +390,18 @@ interface MenuOption {
 
 const accountMenuOptions = computed<MenuOption[]>(() => {
   if (isLoggedIn.value) {
-    return [
+    const options: MenuOption[] = [
       { label: '个人信息', key: 'profile' },
-      { label: '退出登录', key: 'logout' }
+      { label: '我的审批', key: 'my-approvals' }
     ]
+
+    // 如果用户有部门和岗位信息，添加岗位导入选项
+    if (authStore.userInfo?.department_id && authStore.userInfo?.positions?.length > 0) {
+      options.push({ label: '岗位导入', key: 'department-import' })
+    }
+
+    options.push({ label: '退出登录', key: 'logout' })
+    return options
   }
   return [
     { label: '登录 / 注册', key: 'login' }
@@ -426,6 +411,10 @@ const accountMenuOptions = computed<MenuOption[]>(() => {
 const handleAccountMenuSelect = (key: string) => {
   if (key === 'profile') {
     router.push('/user/profile')
+  } else if (key === 'my-approvals') {
+    router.push('/my-approvals')
+  } else if (key === 'department-import') {
+    router.push('/department/import')
   } else if (key === 'logout') {
     authStore.logout()
   } else if (key === 'login') {
@@ -587,142 +576,558 @@ const initSpotlight = () => {
   position: relative;
   min-height: 100vh;
   padding-bottom: 0;
-  background: var(--bg);
-  color: #111217;
+  background: #0b0d12;
+  color: #ffffff;
+}
+
+/* 顶部导航栏 */
+.top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: #0b0d12;
+  height: 72px;
+}
+
+.top-nav__inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  height: 100%;
+  padding: 0 40px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 40px;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #ff4500;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.nav-item {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  white-space: nowrap;
+}
+
+.nav-item:hover {
+  color: #ff4500;
+}
+
+.nav-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #ff4500;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 4px;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-signin {
+  color: #ffffff;
+  background: transparent;
+  border: none;
+  font-weight: 600;
+  font-size: 16px;
+  padding: 10px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-signin:hover {
+  color: #ff4500;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.user-info:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.user-avatar-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.user-avatar-small img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-avatar-small span {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.user-name {
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 14px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-get-started {
+  background: #ffffff;
+  color: #0b0d12;
+  border: none;
+  font-weight: 600;
+  font-size: 16px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-get-started:hover {
+  background: #f0f0f0;
+}
+
+/* 下拉菜单 */
+.nav-group {
+  position: relative;
+}
+
+.nav-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0;
+  min-width: 160px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 1001;
+  padding: 8px 0;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a202c;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: #f8fafc;
+  color: #ff4500;
+}
+
+/* 导航项 */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.nav-item:hover {
+  color: #ff4500;
+}
+
+.nav-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #ff4500;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 4px;
+}
+
+.nav-group {
+  position: relative;
+}
+
+.nav-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0;
+  min-width: 160px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 1001;
+  padding: 8px 0;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a202c;
+  cursor: pointer;
+  text-align: left;
 }
 
 .hero {
   position: relative;
-  padding: 80px 0 120px;
-  min-height: 100vh;
+  min-height: calc(100vh - 72px);
   isolation: isolate;
   overflow: hidden;
-  background: linear-gradient(180deg, #fbfbfc 0%, #f4f5f9 65%, #ffffff 100%);
+  background: #0b0d12;
+  padding-top: 72px;
 }
 
-.hero::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.9), transparent 55%);
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.hero-shell {
-  position: relative;
-  z-index: 1;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-}
-
-.hero-horizon {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.hero-topbar {
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  background: rgba(255, 255, 255, 0.85);
-  border-top: 1px solid rgba(11, 13, 18, 0.06);
-  border-bottom: 1px solid rgba(11, 13, 18, 0.06);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.4), 0 20px 40px rgba(8, 12, 32, 0.12);
-  backdrop-filter: blur(18px);
-  padding: clamp(16px, 3vw, 28px) 0;
-}
-
-.hero-topbar__inner {
-  max-width: 1360px;
+.hero-content {
+  max-width: 1440px;
   margin: 0 auto;
-  width: 100%;
-  padding: 0 clamp(24px, 6vw, 80px);
+  padding: 0 40px;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
   align-items: center;
-  gap: clamp(16px, 3vw, 32px);
+  min-height: calc(100vh - 60px);
 }
 
-.hero-brand {
+/* 左侧文本区域 */
+.hero-text-section {
+  color: #ffffff;
+}
+
+/* 左侧文本区域 */
+.hero-text-section {
+  color: #ffffff;
+  max-width: 600px;
+}
+
+.hero-eyebrow {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ff4500;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin: 0 0 20px;
+}
+
+.hero-title {
+  font-size: 56px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  letter-spacing: -1px;
+  line-height: 1.1;
+}
+
+.hero-subtitle {
+  font-size: 22px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 20px;
+}
+
+.hero-desc {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 32px;
+  line-height: 1.8;
+}
+
+.hero-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.feature-item {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.feature-icon {
+  color: #ff4500;
+  font-size: 14px;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 16px;
+}
+
+.btn-primary {
+  background: #ffffff;
+  color: #0b0d12;
+  border: none;
+  padding: 14px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #f0f0f0;
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 14px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 右侧产品展示 */
+.hero-image-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.product-showcase {
+  background: #1a1d24;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  width: 100%;
+  max-width: 560px;
+}
+
+.showcase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.showcase-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.showcase-badge {
+  background: #ff4500;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.showcase-body {
+  padding: 24px;
 }
 
 .brand-mark {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: #0b0d12;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #ff4500;
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 16px;
 }
 
-.brand-meta strong {
-  display: block;
-  font-size: 18px;
-  color: #0b0d12;
+.brand-icon {
+  font-size: 16px;
+}
+
+.brand-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.5px;
 }
 
 .hero-topnav {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+
+.hero-brand {
+  display: flex;
+  align-items: center;
+}
+
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #ff4500;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.brand-icon {
+  font-size: 14px;
+}
+
+.brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.3px;
+}
+
+.hero-topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
 }
 
 .nav-item {
-  position: relative;
-  padding: 12px 14px;
-  border: 1px solid rgba(11, 13, 18, 0.1);
-  border-radius: 4px;
-  background: #fff;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.2s ease, transform 0.2s ease;
-}
-
-.nav-item:hover,
-.nav-item:focus-visible {
-  border-color: #0b0d12;
-  transform: translateY(-2px);
-}
-
-.nav-item.active {
-  border-color: #ff7a18;
-  box-shadow: 0 12px 26px rgba(11, 13, 18, 0.12);
-}
-
-.nav-label {
-  display: block;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 16px;
   font-weight: 600;
-  color: #0b0d12;
+  color: #ffffff;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  white-space: nowrap;
 }
 
-.nav-desc {
-  display: block;
-  color: #6b7282;
-  font-size: 12px;
+.nav-item:hover {
+  color: #ff4500;
 }
 
 .nav-badge {
-  position: absolute;
-  top: 10px;
-  right: 12px;
   font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #ff7a18;
+  font-weight: 700;
+  color: #ffffff;
+  background: #ff4500;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 4px;
 }
 
-.hero-account {
+.nav-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  background: #ff4500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: auto;
+}
+
+.hero-right {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 24px;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .account-btn {
@@ -730,46 +1135,24 @@ const initSpotlight = () => {
   background: transparent;
   display: flex;
   align-items: center;
-  gap: 12px;
   cursor: pointer;
-  padding: 6px 0;
+  padding: 4px;
+  border-radius: 50%;
 }
 
 .account-avatar {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: #0b0d12;
-  color: #fff;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
+  font-size: 16px;
 }
 
-.account-avatar-img {
-  flex-shrink: 0;
-}
-
-.account-avatar--ghost {
-  background: rgba(11, 13, 18, 0.08);
-  color: #0b0d12;
-}
-
-.account-meta {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.account-name {
-  font-weight: 600;
-}
-
-.account-link {
-  font-size: 12px;
-  color: #6b7282;
-}
 
 .hero-grid {
   width: 100%;
@@ -855,16 +1238,6 @@ const initSpotlight = () => {
   inset: 0;
   pointer-events: none;
   opacity: 0.08;
-}
-
-.hero-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  position: relative;
-  background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark) 70%, var(--bg-darker) 70%, var(--bg-darker) 100%);
-  padding: 40px;
-  border-radius: 0;
 }
 
 .hero-text-block {

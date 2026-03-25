@@ -70,6 +70,9 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   // 流程轨迹
   const processTimeline = ref<ProcessTimelineInfo | null>(null)
 
+  // 用于取消请求的 AbortController
+  let currentFlowRequest: AbortController | null = null
+
   // 统计信息
   const stats = computed(() => ({
     total: approvalList.value.length,
@@ -115,6 +118,12 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
 
   // 加载流程图数据
   const loadFlowDiagram = async (formId: number, processInstanceId: number | null, flowDefinitionId?: number | null) => {
+    // 取消之前的请求
+    if (currentFlowRequest) {
+      currentFlowRequest.abort()
+    }
+    currentFlowRequest = new AbortController()
+
     flowLoading.value = true
     flowNodes.value = []
     flowRoutes.value = []
@@ -138,8 +147,14 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
 
       // 并行获取流程定义和流程轨迹
       const [flowRes, timelineRes] = await Promise.all([
-        getFlowDefinitionDetail(realFlowDefId).catch(() => null),
-        processInstanceId ? getProcessTimeline(processInstanceId).catch(() => null) : Promise.resolve(null)
+        getFlowDefinitionDetail(realFlowDefId).catch((e) => {
+          if (e?.message === 'canceled' || e?.code === 'ERR_CANCELED') return null
+          throw e
+        }),
+        processInstanceId ? getProcessTimeline(processInstanceId).catch((e) => {
+          if (e?.message === 'canceled' || e?.code === 'ERR_CANCELED') return null
+          throw e
+        }) : Promise.resolve(null)
       ])
 
       // 处理流程定义数据
@@ -221,10 +236,15 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
           entries: timelineRes.data.entries
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // 忽略取消错误
+      if (error?.name === 'AbortError' || error?.message === 'canceled' || error?.code === 'ERR_CANCELED') {
+        return
+      }
       console.error('加载流程图数据失败:', error)
     } finally {
       flowLoading.value = false
+      currentFlowRequest = null
     }
   }
 

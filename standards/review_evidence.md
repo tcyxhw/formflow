@@ -17,8 +17,9 @@
 | 1 | api-contract / type-safety | 盲区 | category→category_id 前后端未同步 | observation | 高 | 1 | 2026-03-24 |
 | 2 | performance | 盲区 | list_forms 权限过滤 N+1 查询 | observation | 高 | 1 | 2026-03-24 |
 | 3 | data-model | 模糊 | 级联删除未检查 process_instance 外键 | observation | 中 | 1 | 2026-03-24 |
+| 4 | dependency | 模糊 | 图标使用方式不一致 | observation | 低 | 1 | 2026-03-24 |
 
-**活跃条目数**：3 / 15（达到 15 条时建议人工审核归档）
+**活跃条目数**：4 / 15（达到 15 条时建议人工审核归档）
 
 ---
 
@@ -120,6 +121,18 @@
 - 级别：observation
 - 严重性：中
 - 标签：data-model
+- 出现次数：1
+- 最后触发：2026-03-24
+
+### [2026-03-24 10:30] 模糊 | 图标使用方式不一致
+- 文件：`my-app/src/components/flow-configurator/AutoConditionEditor.vue:7,26,41,69,79,97,126,142,162`
+- 场景：AutoConditionEditor.vue重构中使用了多个内联SVG图标（检查、列表、设置、编辑、删除、添加、保存等）
+- 当前做法：直接在模板中写SVG代码
+- 规则缺口：项目缺少图标使用规范，未明确何时使用内联SVG vs @iconify/vue
+- 建议方向：考虑统一图标使用方式，或至少在同一目录内保持一致
+- 级别：observation
+- 严重性：低
+- 标签：dependency
 - 出现次数：1
 - 最后触发：2026-03-24
 

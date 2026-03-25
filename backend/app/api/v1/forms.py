@@ -119,6 +119,7 @@ async def get_fillable_forms(
         category: Optional[str] = Query(None, description="表单类别筛选"),
         sort_by: str = Query("created_at", description="排序字段"),
         sort_order: str = Query("desc", description="排序方向: asc/desc"),
+        search_type: str = Query("name", description="搜索类型: name/owner"),
         current_user: User = Depends(get_current_user),
         tenant_id: int = Depends(get_current_tenant_id),
         db: Session = Depends(get_db)
@@ -146,7 +147,8 @@ async def get_fillable_forms(
             status=status,
             category=category,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
+            search_type=search_type
         )
         
         # 调用服务层获取可填写表单列表

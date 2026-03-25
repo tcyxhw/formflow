@@ -1,23 +1,30 @@
 <template>
   <div class="flow-config-page">
     <div class="config-header">
-      <div>
-        <div class="title">{{ store.flowName || '流程配置' }}</div>
-        <div class="meta">
-          <span v-if="flowId">流程 ID：{{ flowId }}</span>
-          <span class="version-info">
-            <n-tag :type="store.dirty ? 'warning' : 'success'" size="small">
-              草稿 v{{ store.version }}
-            </n-tag>
-            <n-tag v-if="latestSnapshotTag" type="info" size="small" style="margin-left: 8px;">
-              已发布 {{ latestSnapshotTag }}
-            </n-tag>
-          </span>
-          <span>上次保存：{{ formatTimestamp(store.lastSavedAt) }}</span>
-          <span :class="{ dirty: store.dirty }">
-            {{ store.dirty ? '未保存修改' : '已保存' }}
-          </span>
-          <span v-if="autoSaving" class="autosave">自动保存中…</span>
+      <div class="header-left">
+        <n-button quaternary circle size="small" class="back-btn" @click="handleGoBack">
+          <template #icon>
+            <n-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></n-icon>
+          </template>
+        </n-button>
+        <div>
+          <div class="title">{{ store.flowName || '流程配置' }}</div>
+          <div class="meta">
+            <span v-if="flowId">流程 ID：{{ flowId }}</span>
+            <span class="version-info">
+              <n-tag :type="store.dirty ? 'warning' : 'success'" size="small">
+                草稿 v{{ store.version }}
+              </n-tag>
+              <n-tag v-if="latestSnapshotTag" type="info" size="small" style="margin-left: 8px;">
+                已发布 {{ latestSnapshotTag }}
+              </n-tag>
+            </span>
+            <span>上次保存：{{ formatTimestamp(store.lastSavedAt) }}</span>
+            <span :class="{ dirty: store.dirty }">
+              {{ store.dirty ? '未保存修改' : '已保存' }}
+            </span>
+            <span v-if="autoSaving" class="autosave">自动保存中…</span>
+          </div>
         </div>
       </div>
       <div class="header-actions">
@@ -512,6 +519,12 @@ const returnToHome = async () => {
   router.push('/')
 }
 
+const handleGoBack = async () => {
+  const confirmed = await confirmDiscardLocalChanges('返回将丢失未保存的修改，是否继续？')
+  if (!confirmed) return
+  router.back()
+}
+
 const toggleAutoSave = (value: boolean) => {
   autoSaveEnabled.value = value
   if (!value) {
@@ -660,6 +673,16 @@ onBeforeRouteLeave(async () => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.back-btn {
+  margin-top: 2px;
 }
 
 .title {
