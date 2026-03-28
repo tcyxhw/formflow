@@ -1072,6 +1072,64 @@ from app.models.user import (
 )
 from sqlalchemy import and_
 
+# 角色名称映射：英文 -> 中文（用于前端传值与数据库角色名称的转换）
+ROLE_NAME_MAP = {
+    "admin": "管理员",
+    "teacher": "老师",
+    "student": "学生",
+    "管理员": "管理员",
+    "老师": "老师",
+    "学生": "学生",
+    "系统管理员": "系统管理员",
+    "租户管理员": "租户管理员",
+}
+
+
+def normalize_role_name(role_name: str) -> str:
+    """
+    将角色名称标准化为数据库中使用的中文名称
+
+    Args:
+        role_name: 角色名称（可以是英文或中文）
+
+    Returns:
+        str: 标准化后的中文角色名称
+    """
+    return ROLE_NAME_MAP.get(role_name, role_name)
+
+
+def get_all_child_department_ids(dept_ids: List[int], tenant_id: int, db: Session) -> List[int]:
+    """
+    递归获取所有子部门ID（包含传入的部门ID本身）
+
+    Args:
+        dept_ids: 父部门ID列表
+        tenant_id: 租户ID
+        db: 数据库会话
+
+    Returns:
+        List[int]: 包含所有子部门的ID列表
+    """
+    from app.models.user import Department
+
+    all_dept_ids = set(dept_ids)
+    queue = list(dept_ids)
+
+    while queue:
+        current_id = queue.pop(0)
+        # 查询当前部门的所有直接子部门
+        children = db.query(Department.id).filter(
+            Department.tenant_id == tenant_id,
+            Department.parent_id == current_id
+        ).all()
+
+        for child in children:
+            if child.id not in all_dept_ids:
+                all_dept_ids.add(child.id)
+                queue.append(child.id)
+
+    return list(all_dept_ids)
+
 
 def check_user_manage_permission(
     current_user: User,
@@ -1192,6 +1250,9 @@ def get_manageable_user_ids(
 
     dept_ids = [ud.department_id for ud in current_user_depts]
 
+    # 扩展部门ID列表，包含所有子部门
+    dept_ids = get_all_child_department_ids(dept_ids, tenant_id, db)
+
     # 获取当前用户的岗位
     current_user_posts = db.query(UserDepartmentPost).filter(
         UserDepartmentPost.user_id == current_user.id,
@@ -1297,11 +1358,15 @@ def get_manageable_user_ids(
                 
                 for tup in target_user_positions:
                     target_user_posts.append(TargetFallbackPost(dept_user.department_id, tup.position_id))
-        
-        # 如果目标用户没有岗位，跳过
+
+        # 过滤掉 post_id 为 None 的记录
+        target_user_posts = [p for p in target_user_posts if p.post_id is not None]
+
+        # 如果目标用户没有岗位，视为最低层级（学生等），可以被查看
         if not target_user_posts:
+            manageable_user_ids.add(dept_user.user_id)
             continue
-        
+
         # 检查目标用户是否有低于当前用户的岗位
         target_has_lower_level = False
         for tup in target_user_posts:
@@ -1313,7 +1378,7 @@ def get_manageable_user_ids(
             if level_info and level_info.level > min_user_level:
                 target_has_lower_level = True
                 break
-        
+
         if target_has_lower_level:
             manageable_user_ids.add(dept_user.user_id)
     
@@ -1389,9 +1454,11 @@ async def list_users(
 
         # 角色筛选
         if query.role:
+            # 将前端传入的英文角色名转换为中文
+            normalized_role = normalize_role_name(query.role)
             role_user_ids = db.query(UserRole.user_id).join(Role).filter(
                 UserRole.tenant_id == tenant_id,
-                Role.name == query.role
+                Role.name == normalized_role
             ).subquery()
             base_query = base_query.filter(User.id.in_(role_user_ids))
 
@@ -1618,9 +1685,11 @@ async def update_user(
 
             # 添加新角色
             if update_data.role:
+                # 将前端传入的英文角色名转换为中文
+                normalized_role = normalize_role_name(update_data.role)
                 role = db.query(Role).filter(
                     Role.tenant_id == tenant_id,
-                    Role.name == update_data.role
+                    Role.name == normalized_role
                 ).first()
                 if not role:
                     raise NotFoundError(f"角色 '{update_data.role}' 不存在")
