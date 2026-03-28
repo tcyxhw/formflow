@@ -62,7 +62,6 @@ export interface TaskListQuery {
   page_size?: number
   status?: TaskStatus | null
   only_mine?: boolean
-  include_group_tasks?: boolean
   keyword?: string | null
   sla_level?: SlaLevel | null
 }

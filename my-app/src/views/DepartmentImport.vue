@@ -48,18 +48,12 @@
               <span class="info-label">当前岗位：</span>
               <span class="info-value">{{ currentUserInfo.positions?.join(', ') || '未分配' }}</span>
             </div>
-            <div class="info-item">
-              <span class="info-label">可导入部门：</span>
-              <span class="info-value">{{ accessibleDepartments.length }} 个</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">可导入岗位：</span>
-              <span class="info-value">{{ accessiblePositions.length }} 个</span>
-            </div>
           </div>
           <n-divider />
-          <div class="permission-desc">
-            <p>您只能导入下级部门和岗位的用户信息。涉及更高级别的部门/岗位将自动跳过。</p>
+          <div class="permission-actions">
+            <n-button size="small" type="info" block @click="showScopeDrawer = true">
+              查看可导入范围
+            </n-button>
           </div>
         </div>
 
@@ -107,6 +101,15 @@
 
           <div class="upload-settings">
             <n-form label-placement="left" label-width="100">
+              <n-form-item label="默认部门">
+                <n-select
+                  v-model:value="importSettings.default_department_id"
+                  :options="filteredDepartmentOptions"
+                  :placeholder="filteredDepartmentOptions.length > 0 ? '请选择默认部门' : '暂无可选部门'"
+                  :disabled="filteredDepartmentOptions.length === 0"
+                  style="width: 100%"
+                />
+              </n-form-item>
               <n-form-item label="默认角色">
                 <n-select
                   v-model:value="importSettings.default_role"
@@ -276,7 +279,7 @@
                 @update:value="handleUserSearch"
               />
               <n-select
-                v-model:value="userSearchParams.status"
+                v-model:value="userSearchParams.is_active"
                 :options="statusOptions"
                 placeholder="全部状态"
                 clearable
@@ -290,7 +293,7 @@
           <div class="user-table">
             <n-data-table
               :columns="userColumns"
-              :data="filteredUsers"
+              :data="userList"
               :pagination="userPagination"
               :row-key="row => row.id"
               :row-props="rowProps"
@@ -359,6 +362,95 @@
         </div>
       </template>
     </n-modal>
+
+    <!-- 可导入范围抽屉 -->
+    <n-drawer v-model:show="showScopeDrawer" :width="550" placement="right">
+      <n-drawer-content title="可导入范围">
+        <div v-if="accessibleDepartments.length === 0">
+          <n-empty description="暂无可导入部门" />
+        </div>
+        <div v-else class="scope-tree-container">
+          <div class="tree-legend">
+            <span class="legend-item">
+              <span class="legend-dot importable"></span>
+              可导入岗位
+            </span>
+            <span class="legend-item" v-if="currentUserPostIds.length > 0">
+              <span class="legend-dot current"></span>
+              当前岗位
+            </span>
+          </div>
+          <n-scrollbar style="max-height: calc(100vh - 180px)">
+            <div class="dept-tree">
+              <div 
+                v-for="(dept, index) in accessibleDepartments" 
+                :key="dept.id" 
+                class="dept-node"
+                :style="{ '--dept-index': index }"
+              >
+                <div class="dept-header">
+                  <div class="dept-icon-wrapper">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                    </svg>
+                  </div>
+                  <span class="dept-name">{{ dept.name }}</span>
+                  <n-tag size="small" type="primary" :bordered="false">
+                    {{ dept.posts?.length || 0 }} 岗位
+                  </n-tag>
+                </div>
+                <div class="dept-posts-tree" v-if="dept.posts && dept.posts.length > 0">
+                  <div 
+                    v-for="(post, pIndex) in sortedPosts(dept.posts)" 
+                    :key="post.id" 
+                    class="post-node"
+                    :class="{ 
+                      'importable': canImportPost(dept.id, post.id),
+                      'current-pos': isCurrentPosition(post.id)
+                    }"
+                    :style="{ '--post-index': pIndex }"
+                  >
+                    <div class="post-connector">
+                      <div class="connector-line"></div>
+                    </div>
+                    <div class="post-content">
+                      <span class="post-icon">
+                        <template v-if="canImportPost(dept.id, post.id)">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                          </svg>
+                        </template>
+                        <template v-else>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                          </svg>
+                        </template>
+                      </span>
+                      <span class="post-name">{{ post.name }}</span>
+                      <div class="post-tags">
+                        <n-tag 
+                          v-if="post.level !== undefined && post.level !== null" 
+                          size="tiny" 
+                          :type="post.level <= 2 ? 'error' : post.level <= 4 ? 'warning' : 'default'"
+                        >
+                          Lv.{{ post.level }}
+                        </n-tag>
+                        <n-tag v-if="isCurrentPosition(post.id)" size="tiny" type="success">
+                          当前岗位
+                        </n-tag>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="no-posts">
+                  <span>暂无可导入岗位</span>
+                </div>
+              </div>
+            </div>
+          </n-scrollbar>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
@@ -368,7 +460,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import { NButton, NTag, NSpace, NPopconfirm } from 'naive-ui'
+import { NButton, NTag, NSpace, NPopconfirm, NDrawer, NDrawerContent, NCollapse, NCollapseItem, NTabs, NTabPane, NEmpty, NScrollbar } from 'naive-ui'
 import adminApi from '@/api/admin'
 
 const router = useRouter()
@@ -382,6 +474,7 @@ const importing = ref(false)
 const importResult = ref<any>(null)
 const selectedRowKeys = ref<(string | number)[]>([])
 const showUserModal = ref(false)
+const showScopeDrawer = ref(false)
 const editingUser = ref<any>(null)
 const submitting = ref(false)
 
@@ -391,27 +484,32 @@ const currentUserInfo = ref({
   department_name: '',
   positions: []
 })
+const currentUserPostIds = ref<number[]>([])  // 当前用户的岗位ID列表
 
 const accessibleDepartments = ref<any[]>([])
 const accessiblePositions = ref<any[]>([])
+const isAdmin = ref(false)
+const scopeDepartmentIds = ref<number[]>([])  // 用户所属的部门ID列表
 
-// 用户列表
+// 用户列表（只存储本次导入的用户）
 const userList = ref<any[]>([])
 const userPagination = ref({
   page: 1,
   pageSize: 10,
   total: 0
 })
+const importedUsers = ref<any[]>([])  // 本次导入的用户
 
 // 搜索参数
 const userSearchParams = ref({
   keyword: '',
   department_id: null,
-  status: null
+  is_active: null
 })
 
 // 导入设置
 const importSettings = ref({
+  default_department_id: null,
   default_role: 'student',
   default_password: '123456'
 })
@@ -437,9 +535,8 @@ const roleOptions = ref([
 ])
 
 const statusOptions = ref([
-  { label: '待审核', value: 'pending' },
-  { label: '已通过', value: 'approved' },
-  { label: '已拒绝', value: 'rejected' }
+  { label: '启用', value: true },
+  { label: '禁用', value: false }
 ])
 
 // 表单验证规则
@@ -450,27 +547,14 @@ const userFormRules = {
 }
 
 // 计算属性
-const filteredUsers = computed(() => {
-  let result = [...userList.value]
-  
-  if (userSearchParams.value.keyword) {
-    const keyword = userSearchParams.value.keyword.toLowerCase()
-    result = result.filter(user => 
-      user.name?.toLowerCase().includes(keyword) ||
-      user.account?.toLowerCase().includes(keyword) ||
-      user.department_name?.toLowerCase().includes(keyword)
+const filteredDepartmentOptions = computed(() => {
+  if (isAdmin.value) {
+    return departmentOptions.value
+  } else {
+    return departmentOptions.value.filter(dept => 
+      scopeDepartmentIds.value.includes(dept.value)
     )
   }
-  
-  if (userSearchParams.value.department_id) {
-    result = result.filter(user => user.department_id === userSearchParams.value.department_id)
-  }
-  
-  if (userSearchParams.value.status) {
-    result = result.filter(user => user.status === userSearchParams.value.status)
-  }
-  
-  return result
 })
 
 // 表格列定义
@@ -507,32 +591,22 @@ const userColumns: DataTableColumns = [
     width: 150,
     render: (row) => {
       return h(NSpace, { size: 4 }, {
-        default: () => row.positions?.map((pos: string) => 
+        default: () => row.positions?.length ? row.positions.map((pos: string) => 
           h(NTag, { size: 'small', type: 'info', bordered: false }, { default: () => pos })
-        ) || '-'
+        ) : '-'
       })
     }
   },
   { 
     title: '状态', 
-    key: 'status', 
+    key: 'is_active', 
     width: 100,
     render: (row) => {
-      const typeMap: Record<string, 'success' | 'warning' | 'error'> = {
-        approved: 'success',
-        pending: 'warning',
-        rejected: 'error'
-      }
-      const labelMap: Record<string, string> = {
-        approved: '已通过',
-        pending: '待审核',
-        rejected: '已拒绝'
-      }
       return h(NTag, {
-        type: typeMap[row.status] || 'default',
+        type: row.is_active ? 'success' : 'error',
         size: 'small',
         bordered: false
-      }, { default: () => labelMap[row.status] || row.status })
+      }, { default: () => row.is_active ? '启用' : '禁用' })
     }
   },
   { 
@@ -547,12 +621,6 @@ const userColumns: DataTableColumns = [
             quaternary: true,
             onClick: () => editUser(row)
           }, { default: () => '编辑' }),
-          row.status === 'pending' && h(NButton, {
-            size: 'small',
-            type: 'primary',
-            quaternary: true,
-            onClick: () => approveUser(row.id)
-          }, { default: () => '通过' }),
           h(NPopconfirm, {
             onPositiveClick: () => deleteUser(row.id)
           }, {
@@ -610,14 +678,32 @@ const startImport = async () => {
     return
   }
 
-  importing.value = true
+    importing.value = true
   try {
     const response = await adminApi.batchImportUsers(
       selectedFile.value,
-      importSettings.value.default_password
+      importSettings.value.default_password,
+      importSettings.value.default_department_id
     )
     importResult.value = response.data
     message.success(`导入完成：成功 ${response.data.success_count} 条，失败 ${response.data.failed_count} 条`)
+    
+    // 将导入成功的用户存储到 importedUsers
+    if (response.data.results) {
+      importedUsers.value = response.data.results
+        .filter((r: any) => r.success)
+        .map((r: any) => ({
+          id: r.row_number,
+          account: r.account,
+          name: r.name,
+          department_name: r.department_name || '未分配',
+          department_id: r.department_id,
+          positions: r.position_name ? [r.position_name] : [],
+          status: 'pending',
+          email: r.email,
+          phone: r.phone
+        }))
+    }
     
     // 刷新用户列表
     await loadUserList()
@@ -628,58 +714,171 @@ const startImport = async () => {
   }
 }
 
+// 判断是否是当前用户的岗位
+const isCurrentPosition = (postId: number) => {
+  return currentUserPostIds.value.includes(postId)
+}
+
+// 判断是否可以导入该岗位
+const canImportPost = (deptId: number, postId: number) => {
+  if (isAdmin.value) {
+    return true
+  }
+  const dept = accessibleDepartments.value.find(d => d.id === deptId)
+  if (!dept || !dept.posts) return false
+  return dept.posts.some((p: any) => p.id === postId)
+}
+
+// 对岗位按层级排序（层级值越小越靠前）
+const sortedPosts = (posts: any[] | undefined) => {
+  if (!posts) return []
+  return [...posts].sort((a, b) => {
+    const levelA = a.level ?? 999
+    const levelB = b.level ?? 999
+    if (levelA !== levelB) return levelA - levelB
+    return a.name.localeCompare(b.name)
+  })
+}
+
 const clearResult = () => {
   importResult.value = null
   fileList.value = []
   selectedFile.value = null
+  importedUsers.value = []
+  loadUserList()
 }
 
 const loadUserInfo = async () => {
-  // 加载当前用户信息
-  if (authStore.userInfo) {
-    currentUserInfo.value = {
-      department_id: authStore.userInfo.department_id,
-      department_name: authStore.userInfo.department?.name || '',
-      positions: authStore.userInfo.positions || []
-    }
-  }
-  
-  // 加载可访问的部门和岗位
+  // 加载可管理范围（包含当前用户信息）
   try {
-    const [deptRes, posRes] = await Promise.all([
-      adminApi.listDepartments({ size: 100 }),
-      adminApi.listPositions({ size: 100 })
-    ])
-    accessibleDepartments.value = deptRes.data.items
-    accessiblePositions.value = posRes.data.items
+    const scopeRes = await adminApi.getManageableScope()
+    const scope = scopeRes.data
     
-    departmentOptions.value = deptRes.data.items.map((dept: any) => ({
+    // 设置管理员状态
+    isAdmin.value = scope.is_admin
+    
+    // 更新当前用户信息（使用API返回的真实数据）
+    if (scope.current_user_department) {
+      currentUserInfo.value = {
+        department_id: scope.current_user_department.id,
+        department_name: scope.current_user_department.name,
+        positions: scope.current_user_positions.map(p => p.name)
+      }
+      // 设置当前用户的岗位ID列表
+      currentUserPostIds.value = scope.current_user_positions.map(p => p.id)
+    } else if (authStore.userInfo) {
+      // 回退到authStore
+      currentUserInfo.value = {
+        department_id: authStore.userInfo.department_id,
+        department_name: authStore.userInfo.department?.name || '未分配',
+        positions: authStore.userInfo.positions || []
+      }
+    }
+    
+    // 更新可管理部门
+    accessibleDepartments.value = scope.departments
+    
+    // 从可管理部门中提取所有岗位
+    const allPosts: any[] = []
+    scope.departments.forEach((dept: any) => {
+      if (dept.posts && Array.isArray(dept.posts)) {
+        dept.posts.forEach((post: any) => {
+          if (!allPosts.find(p => p.id === post.id)) {
+            allPosts.push(post)
+          }
+        })
+      }
+    })
+    accessiblePositions.value = allPosts
+    
+    // 更新部门选项
+    departmentOptions.value = scope.departments.map((dept: any) => ({
       label: dept.name,
       value: dept.id
     }))
     
-    positionOptions.value = posRes.data.items.map((pos: any) => ({
-      label: pos.name,
-      value: pos.id
+    // 更新岗位选项
+    positionOptions.value = allPosts.map((post: any) => ({
+      label: post.name,
+      value: post.id
     }))
+    
+    // 如果不是管理员且有部门，设置默认部门且不允许修改
+    if (!scope.is_admin && scope.current_user_department) {
+      importSettings.value.default_department_id = scope.current_user_department.id
+      scopeDepartmentIds.value = [scope.current_user_department.id]
+    } else if (scope.is_admin && filteredDepartmentOptions.value.length > 0) {
+      // 管理员默认选中第一个部门
+      importSettings.value.default_department_id = filteredDepartmentOptions.value[0].value
+    }
   } catch (error) {
-    console.error('加载部门岗位信息失败', error)
+    console.error('加载可管理范围失败', error)
+    // 回退到authStore
+    if (authStore.userInfo) {
+      currentUserInfo.value = {
+        department_id: authStore.userInfo.department_id,
+        department_name: authStore.userInfo.department?.name || '未分配',
+        positions: authStore.userInfo.positions || []
+      }
+    }
+    // 如果获取可管理范围失败，回退到加载所有部门和岗位
+    try {
+      const [deptRes, posRes] = await Promise.all([
+        adminApi.listDepartments({ size: 100 }),
+        adminApi.listPositions({ size: 100 })
+      ])
+      accessibleDepartments.value = deptRes.data.items
+      accessiblePositions.value = posRes.data.items
+      
+      departmentOptions.value = deptRes.data.items.map((dept: any) => ({
+        label: dept.name,
+        value: dept.id
+      }))
+      
+      positionOptions.value = posRes.data.items.map((pos: any) => ({
+        label: pos.name,
+        value: pos.id
+      }))
+    } catch (fallbackError) {
+      console.error('加载部门岗位信息失败', fallbackError)
+    }
   }
 }
 
 const loadUserList = async () => {
-  try {
-    // 这里应该调用获取用户列表的API
-    // 暂时使用模拟数据
-    userList.value = [
-      { id: 1, account: 'zhangsan', name: '张三', department_name: '计算机科学系', positions: ['学生'], status: 'approved' },
-      { id: 2, account: 'lisi', name: '李四', department_name: '计算机科学系', positions: ['学生'], status: 'pending' },
-      { id: 3, account: 'wangwu', name: '王五', department_name: '电子工程系', positions: ['学生'], status: 'approved' }
-    ]
-    userPagination.value.total = userList.value.length
-  } catch (error) {
-    message.error('加载用户列表失败')
+  // 如果没有导入的用户，显示空列表
+  if (importedUsers.value.length === 0) {
+    userList.value = []
+    userPagination.value.total = 0
+    return
   }
+  
+  // 从导入的用户中筛选（只显示本次导入的用户，用于预览和编辑）
+  let filteredUsers = [...importedUsers.value]
+  
+  // 关键词搜索
+  if (userSearchParams.value.keyword) {
+    const keyword = userSearchParams.value.keyword.toLowerCase()
+    filteredUsers = filteredUsers.filter(user => 
+      user.name?.toLowerCase().includes(keyword) ||
+      user.account?.toLowerCase().includes(keyword) ||
+      user.department_name?.toLowerCase().includes(keyword)
+    )
+  }
+  
+  // 部门筛选
+  if (userSearchParams.value.department_id) {
+    filteredUsers = filteredUsers.filter(user => 
+      user.department_id === userSearchParams.value.department_id
+    )
+  }
+  
+  // 分页
+  const start = (userPagination.value.page - 1) * userPagination.value.pageSize
+  const end = start + userPagination.value.pageSize
+  
+  userList.value = filteredUsers.slice(start, end)
+  userPagination.value.total = filteredUsers.length
 }
 
 const refreshUserList = () => {
@@ -1112,5 +1311,204 @@ onMounted(async () => {
   .header-actions {
     flex-wrap: wrap;
   }
+}
+
+/* 可导入范围树状图样式 */
+.scope-tree-container {
+  padding: 0 8px;
+}
+
+.tree-legend {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-dot.importable {
+  background: #10b981;
+}
+
+.legend-dot.current {
+  background: #3b82f6;
+}
+
+.dept-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dept-node {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  animation: slideIn 0.3s ease forwards;
+  animation-delay: calc(var(--dept-index, 0) * 0.05s);
+  opacity: 0;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.dept-node:hover {
+  border-color: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+}
+
+.dept-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dept-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10b981;
+  border-radius: 8px;
+  color: #ffffff;
+}
+
+.dept-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 15px;
+  color: #1e293b;
+}
+
+.dept-posts-tree {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.post-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  animation: fadeIn 0.3s ease forwards;
+  animation-delay: calc(var(--post-index, 0) * 0.03s);
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.post-node.importable {
+  background: #f0fdf4;
+}
+
+.post-node.importable:hover {
+  background: #dcfce7;
+}
+
+.post-node.current-pos {
+  background: #eff6ff;
+}
+
+.post-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.connector-line {
+  width: 2px;
+  height: 20px;
+  background: linear-gradient(180deg, #10b981 0%, #e2e8f0 100%);
+}
+
+.post-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.post-icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.post-node.importable .post-icon {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.post-node.current-pos .post-icon {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.post-name {
+  font-size: 14px;
+  color: #334155;
+  font-weight: 500;
+}
+
+.post-tags {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.no-posts {
+  padding: 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
 }
 </style>

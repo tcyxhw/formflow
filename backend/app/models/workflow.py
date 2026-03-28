@@ -130,6 +130,7 @@ class ProcessInstance(DBBaseModel):
     flow_definition_id = Column(Integer, ForeignKey("flow_definition.id"), nullable=False)
     state = Column(String(20), default="running", comment="状态：running/finished/canceled")
     form_data_snapshot = Column(JSONB, nullable=True, comment="表单数据快照")
+    initiator_id = Column(Integer, ForeignKey("user.id"), nullable=True, comment="发起人ID")
 
     # 关系
     # flow_definition = relationship("FlowDefinition", back_populates="instances")

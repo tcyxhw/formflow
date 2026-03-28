@@ -101,7 +101,7 @@ class AssignmentService:
 
         if node.assignee_type == "department_post":
             return AssignmentService._pick_user_by_department_post(
-                node.assignee_value, initiator_id or 0, tenant_id, db
+                node.assignee_value, initiator_id, tenant_id, db
             )
 
         raise BusinessError(f"未知的指派类型: {node.assignee_type}")
@@ -539,7 +539,7 @@ class AssignmentService:
     @staticmethod
     def _pick_user_by_department_post(
         config: Optional[dict],
-        initiator_id: int,
+        initiator_id: Optional[int],
         tenant_id: int,
         db: Session,
     ) -> Tuple[Optional[int], Optional[int]]:
@@ -574,6 +574,8 @@ class AssignmentService:
 
         elif match_mode == "CURRENT":
             # 发起人当前部门
+            if initiator_id is None:
+                raise BusinessError("发起人ID未知，无法进行部门岗位匹配")
             dept_id = AssignmentService._get_user_department(initiator_id, tenant_id, db)
             if not dept_id:
                 raise BusinessError(f"发起人(ID:{initiator_id})未设置部门，请先在用户管理中为该用户分配部门")
@@ -584,6 +586,8 @@ class AssignmentService:
 
         elif match_mode == "ORG_CHAIN_UP":
             # 沿部门链向上查找
+            if initiator_id is None:
+                raise BusinessError("发起人ID未知，无法进行部门岗位匹配")
             return AssignmentService._find_users_by_org_chain(
                 initiator_id, post_id, tenant_id, db
             )
@@ -592,7 +596,7 @@ class AssignmentService:
             raise BusinessError(f"未知的岗位匹配模式: {match_mode}")
 
     @staticmethod
-    def _get_user_department(user_id: int, tenant_id: int, db: Session) -> Optional[int]:
+    def _get_user_department(user_id: Optional[int], tenant_id: int, db: Session) -> Optional[int]:
         """获取用户的主属部门ID。
 
         优先从 UserDepartmentPost 表获取，如果没有则回退到 User.department_id。
@@ -605,6 +609,9 @@ class AssignmentService:
         Time: O(1), Space: O(1)
         """
         from app.models.user import UserDepartmentPost
+
+        if user_id is None:
+            return None
 
         # 优先从 UserDepartmentPost 表获取
         user_dept_post = (
@@ -705,7 +712,7 @@ class AssignmentService:
 
     @staticmethod
     def _find_users_by_org_chain(
-        user_id: int,
+        user_id: Optional[int],
         post_id: int,
         tenant_id: int,
         db: Session,
@@ -728,6 +735,8 @@ class AssignmentService:
         from app.models.user import UserDepartmentPost, Department
         
         # 使用 _get_user_department 获取用户的部门ID
+        if user_id is None:
+            raise BusinessError("用户ID未知，无法查找组织链")
         current_dept_id = AssignmentService._get_user_department(user_id, tenant_id, db)
         
         if not current_dept_id:

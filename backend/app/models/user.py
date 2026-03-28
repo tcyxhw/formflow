@@ -250,6 +250,18 @@ class DepartmentPost(DBBaseModel):
     is_head = Column(Boolean, default=False, nullable=False, comment="是否是主负责人岗位")
 
 
+class DepartmentPostLevel(DBBaseModel):
+    """部门-岗位-层级关系表"""
+    __tablename__ = "department_post_level"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "department_id", "post_id", name="uq_department_post_level"),
+    )
+
+    department_id = Column(Integer, ForeignKey("department.id"), nullable=False, comment="部门ID")
+    post_id = Column(Integer, ForeignKey("position.id"), nullable=False, comment="岗位ID")
+    level = Column(Integer, nullable=False, comment="层级（越小越高）")
+
+
 class UserDepartmentPost(DBBaseModel):
     """用户-部门-岗位关系表"""
     __tablename__ = "user_department_post"

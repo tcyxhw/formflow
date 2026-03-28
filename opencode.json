@@ -1,18 +1,149 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/mimo-v2-pro-free",
   "instructions": [
     "standards/00_ai_digest.md",
     "standards/01_principles.md",
     "standards/02_decision_matrix.md"
   ],
+  "provider": {
+    "opencode": {
+      "models": {
+        "mimo-v2-pro-free": {
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      }
+    }
+  },
   "agent": {
-    "rule-reviewer": {
-      "description": "审查代码变更，验证证据并维护 review_evidence",
+    "build": {
+      "mode": "primary",
+      "model": "opencode/mimo-v2-pro-free",
+      "reasoningEffort": "high"
+    },
+    "task-intake": {
+      "description": "任务入口分析代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "risk-classifier": {
+      "description": "风险分类代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "planner-lite": {
+      "description": "Lite/Normal 轻计划代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "planner-strict": {
+      "description": "Strict 严格计划代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "implementer": {
+      "description": "实施代理，按计划做最小代码改动",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git status*": "allow",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "pytest*": "allow",
+          "ruff check*": "allow",
+          "mypy*": "allow",
+          "npm run lint*": "allow",
+          "npm run type-check*": "allow",
+          "npm run build*": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "review-orchestrator": {
+      "description": "总控审查代理：触发分域 review、汇总结果、更新 structured evidence、重建 dashboard",
       "mode": "subagent",
       "permission": {
         "edit": {
           "*": "deny",
-          "standards/review_evidence.md": "allow"
+          "evidence/active/*.json": "allow",
+          "evidence/archive/*.json": "allow"
         },
         "bash": {
           "*": "deny",
@@ -20,37 +151,187 @@
           "git diff*": "allow",
           "git log*": "allow",
           "git show*": "allow",
-          "cat standards/*": "allow",
-          "cat app/*": "allow",
-          "cat src/*": "allow",
-          "cat alembic/*": "allow",
-          "cat tests/*": "allow",
+          "git fetch*": "allow",
+          "cat *": "allow",
           "grep *": "allow",
           "wc *": "allow",
-          "sed *": "allow"
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "mv evidence/*": "allow",
+          "cp evidence/*": "allow",
+          "python3 scripts/render_review_evidence.py*": "allow",
+          "python3 scripts/evidence_context.py*": "allow",
+          "pytest*": "allow",
+          "ruff check*": "allow",
+          "mypy*": "allow",
+          "npm run lint*": "allow",
+          "npm run type-check*": "allow",
+          "npm run build*": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "backend-reviewer": {
+      "description": "后端专项审查代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "python3 scripts/evidence_context.py*": "allow",
+          "pytest*": "allow",
+          "ruff check*": "allow",
+          "mypy*": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "frontend-reviewer": {
+      "description": "前端专项审查代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "python3 scripts/evidence_context.py*": "allow",
+          "npm run lint*": "allow",
+          "npm run type-check*": "allow",
+          "npm run build*": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "contract-reviewer": {
+      "description": "前后端契约闭合专项审查代理",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "python3 scripts/evidence_context.py*": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "risk-reviewer": {
+      "description": "高风险域专项审查代理：权限、安全、事务、状态、删除、迁移",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "python3 scripts/evidence_context.py*": "allow",
+          "pytest*": "allow"
         },
         "webfetch": "deny"
       }
     },
     "rule-proposer": {
-      "description": "从已验证证据生成规则提案并写入隔离目录",
+      "description": "从已验证 evidence 生成规则提案并写入隔离目录，更新 structured evidence",
       "mode": "subagent",
       "permission": {
         "edit": {
           "*": "deny",
-          "standards/review_evidence.md": "allow",
+          "evidence/active/*.json": "allow",
+          "evidence/proposals/*.json": "allow",
+          "evidence/archive/*.json": "allow",
           "standards/rule_proposals/*.md": "allow"
         },
         "bash": {
           "*": "deny",
-          "cat standards/*": "allow",
-          "cat app/*": "allow",
-          "cat src/*": "allow",
-          "cat alembic/*": "allow",
-          "cat tests/*": "allow",
+          "cat *": "allow",
           "grep *": "allow",
           "wc *": "allow",
-          "sed *": "allow"
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "mv evidence/*": "allow",
+          "cp evidence/*": "allow",
+          "python3 scripts/render_review_evidence.py*": "allow",
+          "python3 scripts/evidence_context.py*": "allow"
+        },
+        "webfetch": "deny"
+      }
+    },
+    "system-gardener": {
+      "description": "系统运营与垃圾回收代理，负责健康检查、报表、规则花园与文档花园",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "*": "deny"
+        },
+        "bash": {
+          "*": "deny",
+          "cat *": "allow",
+          "grep *": "allow",
+          "wc *": "allow",
+          "sed *": "allow",
+          "find *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "ls *": "allow",
+          "python3 scripts/ops_report.py*": "allow",
+          "python3 scripts/doc_integrity_check.py*": "allow",
+          "python3 scripts/evidence_context.py*": "allow",
+          "python3 scripts/hot_path_audit.py*": "allow",
+          "python3 scripts/context_surface_report.py*": "allow"
         },
         "webfetch": "deny"
       }

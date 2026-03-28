@@ -71,8 +71,13 @@ class DraftSaveRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    """导出请求"""
-    form_id: int = Field(..., description="表单ID")
+    """导出请求
+
+    支持两种模式：
+    1. 单表单导出：指定 form_id
+    2. 多表单导出：指定 submission_ids（自动按 form_id 分组，每个表单一个 Sheet）
+    """
+    form_id: Optional[int] = Field(None, description="表单ID，多表单导出时可为 None")
     format: ExportFormat = Field(ExportFormat.EXCEL, description="导出格式")
     field_ids: Optional[List[str]] = Field(None, description="导出字段，None=全部")
     submission_ids: Optional[List[int]] = Field(None, description="指定提交ID，None=全部")

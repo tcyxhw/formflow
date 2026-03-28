@@ -79,12 +79,6 @@ export const addSignTask = (
   return request.post(`${APPROVAL_BASE_PATH}/${taskId}/add-sign`, payload)
 }
 
-export const listGroupTasks = (
-  params: Pick<TaskListQuery, 'page' | 'page_size'>
-): Promise<Response<TaskListResponse>> => {
-  return request.get(`${APPROVAL_BASE_PATH}/group`, params)
-}
-
 /**
  * 查询流程轨迹
  */

@@ -362,25 +362,44 @@ async def get_form_fields(
     }
     """
     try:
-        # 权限检查：查看权限
-        try:
-            FormPermissionService.ensure_permission(
-                form_id=form_id,
-                tenant_id=tenant_id,
-                permission=PermissionType.VIEW,
-                user_id=current_user.id,
-                db=db
-            )
-        except AuthorizationError:
-            # 对于公开表单允许访问
-            form = FormService.get_form_by_id(form_id, tenant_id, db)
+        form = FormService.get_form_by_id_any_tenant(form_id, db)
+        if not form:
+            return error_response("表单不存在", 4041)
+        
+        real_tenant_id = form.tenant_id
+        
+        has_access = (
+            FormPermissionService.has_permission(form_id, real_tenant_id, PermissionType.VIEW, current_user.id, db)
+            or FormPermissionService.has_permission(form_id, real_tenant_id, PermissionType.FILL, current_user.id, db)
+        )
+        if not has_access:
+            # 检查用户是否是表单创建者
+            if form.owner_user_id == current_user.id:
+                has_access = True
+        
+        if not has_access:
+            # 检查用户是否有该表单的审批任务
+            from app.models.workflow import Task, ProcessInstance
+            from sqlalchemy import and_
+            approval_task_exists = db.query(Task).join(
+                ProcessInstance, Task.process_instance_id == ProcessInstance.id
+            ).filter(
+                and_(
+                    Task.assignee_user_id == current_user.id,
+                    Task.tenant_id == real_tenant_id,
+                    ProcessInstance.form_id == form_id,
+                    Task.status.in_(["open", "claimed", "completed"])
+                )
+            ).first()
+            has_access = approval_task_exists is not None
+        
+        if not has_access:
             if form.access_mode != AccessMode.PUBLIC.value:
-                raise
+                raise AuthorizationError("缺少表单访问权限")
 
-        # 获取表单详情
         form, current_version, _ = FormService.get_form_detail(
             form_id=form_id,
-            tenant_id=tenant_id,
+            tenant_id=real_tenant_id,
             db=db
         )
 

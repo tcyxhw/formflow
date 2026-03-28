@@ -149,7 +149,7 @@ export interface SubmissionStatistics {
 
 // 导出任务请求
 export interface SubmissionExportRequest {
-  form_id: number
+  form_id?: number
   format?: 'excel' | 'csv'
   field_ids?: string[] | null
   submission_ids?: number[] | null

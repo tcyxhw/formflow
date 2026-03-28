@@ -139,23 +139,35 @@
             </n-collapse-item>
           </n-collapse>
         </n-card>
+
+        <!-- 附件列表 -->
+        <n-card v-if="allAttachments.length > 0" title="附件列表" :bordered="false" style="margin-top: 16px;">
+          <n-data-table
+            :columns="attachmentColumns"
+            :data="allAttachments"
+            :bordered="false"
+            :single-line="false"
+            striped
+          />
+        </n-card>
       </template>
     </n-spin>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useMessage, NImage, NIcon } from 'naive-ui'
+import { useMessage, NImage, NIcon, NButton, NTag, type DataTableColumns } from 'naive-ui'
 import { getSubmissionDetail } from '@/api/submission'
+import { downloadAttachment } from '@/api/attachment'
 import type { SubmissionDetail } from '@/types/submission'
 import type { AttachmentInfo } from '@/types/attachment'
 import AuthImage from '@/components/AuthImage.vue'
 
 interface SelectOption {
   label: string
-  value: string | number
+  value: string | number | boolean | null | undefined
 }
 
 interface DisplayField {
@@ -183,6 +195,70 @@ const attachmentMap = computed(() => {
   })
   return map
 })
+
+const allAttachments = computed<AttachmentInfo[]>(() => {
+  return submission.value?.attachments ?? []
+})
+
+const attachmentColumns: DataTableColumns<AttachmentInfo> = [
+  {
+    title: '文件名',
+    key: 'file_name',
+    minWidth: 200,
+    ellipsis: {
+      tooltip: true
+    }
+  },
+  {
+    title: '类型',
+    key: 'content_type',
+    width: 150,
+    ellipsis: {
+      tooltip: true
+    }
+  },
+  {
+    title: '大小',
+    key: 'size',
+    width: 100,
+    render(row) {
+      return formatFileSize(row.size)
+    }
+  },
+  {
+    title: '上传时间',
+    key: 'created_at',
+    width: 180,
+    render(row) {
+      return formatDate(row.created_at)
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 100,
+    render(row) {
+      return h(
+        NButton,
+        {
+          text: true,
+          type: 'primary',
+          onClick: () => handleDownloadAttachment(row)
+        },
+        { default: () => '下载' }
+      )
+    }
+  }
+]
+
+const handleDownloadAttachment = async (file: AttachmentInfo) => {
+  try {
+    await downloadAttachment(file.id, file.file_name)
+  } catch (error) {
+    console.error('Failed to download attachment:', error)
+    message.error('下载失败，请稍后重试')
+  }
+}
 
 const displayFields = computed<DisplayField[]>(() => {
   if (!submission.value) return []

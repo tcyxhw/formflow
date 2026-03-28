@@ -174,6 +174,7 @@ interface FlowRoute {
 interface Props {
   nodes: FlowNode[]
   routes: FlowRoute[]
+  fieldLabels?: Record<string, string>
 }
 
 const props = defineProps<Props>()
@@ -302,21 +303,129 @@ const getAssigneeLabel = (type: string): string => {
   return typeMap[type] || type
 }
 
-// 格式化条件
+// 获取字段中文标签
+const getFieldLabel = (fieldId: string): string => {
+  return props.fieldLabels?.[fieldId] || fieldId
+}
+
+// 格式化条件（支持 JsonLogic 格式和 RouteRule 格式）
 const formatCondition = (condition: Record<string, unknown> | string | null): string => {
   if (!condition) return ''
   if (typeof condition === 'string') return condition
-  const rules = condition.rules as Array<Record<string, unknown>> | undefined
-  if (rules && rules.length) {
-    const rule = rules[0]
-    if (rule.field && rule.operator) {
-      const opMap: Record<string, string> = {
-        'eq': '=', 'neq': '≠', 'gt': '>', 'gte': '≥', 'lt': '<', 'lte': '≤'
-      }
-      return `${rule.fieldLabel || rule.field} ${opMap[rule.operator as string] || rule.operator} ${rule.value || ''}`
-    }
+
+  // 操作符映射
+  const opMap: Record<string, string> = {
+    '==': '等于', 'eq': '等于', 'equals': '等于',
+    '!=': '不等于', 'neq': '不等于', 'not_equals': '不等于',
+    '>': '大于', 'gt': '大于',
+    '>=': '大于等于', 'gte': '大于等于',
+    '<': '小于', 'lt': '小于',
+    '<=': '小于等于', 'lte': '小于等于',
+    'in': '包含于', 'not_in': '不包含于',
+    'contains': '包含', 'not_contains': '不包含',
+    'starts_with': '开头是', 'ends_with': '结尾是',
+    'is_null': '为空', 'not_null': '不为空',
+    'between': '介于', 'has_any': '包含任一', 'has_all': '包含全部',
+    'is_empty': '为空', 'is_not_empty': '不为空'
   }
-  return '条件'
+
+  const formatValue = (value: unknown): string => {
+    if (value === null || value === undefined) return '空'
+    if (Array.isArray(value)) return value.join(', ')
+    if (typeof value === 'object') return JSON.stringify(value)
+    return String(value)
+  }
+
+  const getOperatorText = (op: string): string => opMap[op] || op
+
+  // 递归解析 JsonLogic 表达式
+  const parseJsonLogic = (expr: any, depth: number = 0): string => {
+    if (!expr || typeof expr !== 'object') return String(expr)
+
+    // 处理 AND 逻辑组
+    if (expr.and) {
+      const conditions = Array.isArray(expr.and) ? expr.and : [expr.and]
+      const formatted = conditions.map((c: any) => parseJsonLogic(c, depth + 1))
+      return formatted.join(' 且 ')
+    }
+
+    // 处理 OR 逻辑组
+    if (expr.or) {
+      const conditions = Array.isArray(expr.or) ? expr.or : [expr.or]
+      const formatted = conditions.map((c: any) => parseJsonLogic(c, depth + 1))
+      return formatted.join(' 或 ')
+    }
+
+    // 处理 NOT 逻辑
+    if (expr['!']) {
+      const inner = parseJsonLogic(expr['!'], depth + 1)
+      return `非(${inner})`
+    }
+
+    // 处理二元操作符 (==, !=, >, >=, <, <=)
+    const binaryOps = ['==', 'eq', '!=', 'neq', '>', 'gt', '>=', 'gte', '<', 'lt', '<=', 'lte']
+    for (const op of binaryOps) {
+      if (expr[op]) {
+        const [field, value] = expr[op] as any[]
+        if (field && typeof field === 'object' && 'var' in field) {
+          const fieldLabel = getFieldLabel(field.var)
+          const operatorText = getOperatorText(op)
+          const valueText = formatValue(value)
+          return `${fieldLabel} ${operatorText} ${valueText}`
+        }
+      }
+    }
+
+    // 处理 IN 操作符
+    if (expr.in) {
+      const [value, field] = expr.in as any[]
+      if (field && typeof field === 'object' && 'var' in field) {
+        return `${formatValue(value)} 包含于 ${getFieldLabel(field.var)}`
+      }
+    }
+
+    return JSON.stringify(expr)
+  }
+
+  // 尝试解析 RouteRule 格式: { logic, rules: [...] } 或 { field, operator, value }
+  const parseRouteRule = (rule: Record<string, unknown>): string => {
+    if (rule.field && rule.operator) {
+      const opText = getOperatorText(String(rule.operator))
+      return `${getFieldLabel(String(rule.field))} ${opText} ${formatValue(rule.value)}`
+    }
+    return JSON.stringify(rule)
+  }
+
+  // 检测并解析 RouteRule 格式: { logic: "and"|"or", rules: [...] }
+  const logic = (condition.logic as string || '').toLowerCase()
+  const rules = condition.rules as Array<Record<string, unknown>> | undefined
+  if ((logic === 'and' || logic === 'or') && rules && rules.length) {
+    const sep = logic === 'and' ? ' 且 ' : ' 或 '
+    return rules.map(r => parseRouteRule(r)).join(sep)
+  }
+
+  // 检测并解析 RouteRule 格式: { field, operator, value }
+  if (condition.field && condition.operator) {
+    return parseRouteRule(condition)
+  }
+
+  // 尝试解析 JsonLogic 格式（检查是否有 JsonLogic 操作符）
+  const jsonLogicOps = ['and', 'or', '!', '==', '!=', '>', '>=', '<', '<=', 'in']
+  const hasJsonLogicOp = Object.keys(condition).some(k => jsonLogicOps.includes(k))
+  if (hasJsonLogicOp) {
+    return parseJsonLogic(condition)
+  }
+
+  // 无法解析时展示 key: value 对
+  const entries = Object.entries(condition).filter(
+    ([k]) => !['logic', 'rules', 'fieldLabel'].includes(k)
+  )
+  if (entries.length === 1) {
+    const [k, v] = entries[0]
+    return `${k}: ${formatValue(v)}`
+  }
+
+  return JSON.stringify(condition)
 }
 
 // 节点和边的类型定义

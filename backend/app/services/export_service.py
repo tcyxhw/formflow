@@ -29,89 +29,185 @@ class ExportService:
             user_id: int,
             db: Session
     ) -> Dict[str, Any]:
-        """导出提交数据"""
-        # 查询数据量
-        query = db.query(Submission).filter(
-            Submission.form_id == request.form_id,
-            Submission.tenant_id == tenant_id
-        )
+        """导出提交数据
 
-        if request.submission_ids:
-            query = query.filter(Submission.id.in_(request.submission_ids))
-
-        total = query.count()
-
-        # 判断同步还是异步
+        支持两种模式：
+        1. 单表单导出：指定 form_id，可选 submission_ids
+        2. 多表单导出：指定 submission_ids，自动按 form_id 分组，每个表单一个 Sheet
+        """
+        from app.models.form import Form
         from app.config import settings
-        threshold = settings.EXPORT_ASYNC_THRESHOLD
 
-        if total <= threshold:
-            # 同步导出
-            submissions = query.all()
-            version = db.query(FormVersion).filter(
-                FormVersion.form_id == request.form_id,
-                FormVersion.version > 0
-            ).order_by(FormVersion.version.desc()).first()
+        # 判断是否为多表单导出（有 submission_ids 但 form_id 为 None 或 0）
+        is_multi_form = request.submission_ids and (not request.form_id or request.form_id == 0)
 
-            if not version:
-                raise NotFoundError("表单版本不存在")
+        if is_multi_form:
+            # 多表单导出模式：按 submission_ids 查询，按 form_id 分组
+            submissions = db.query(Submission).filter(
+                Submission.id.in_(request.submission_ids),
+                Submission.tenant_id == tenant_id
+            ).all()
 
-            # 生成文件
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            filename = f"export_{request.form_id}_{timestamp}.xlsx"
-            output_path = Path(settings.EXPORT_TEMP_DIR) / filename
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            if not submissions:
+                raise NotFoundError("未找到指定的提交记录")
 
-            ExportService.export_to_excel(
-                submissions=submissions,
-                form_version=version,
-                field_ids=request.field_ids,
-                desensitize=request.desensitize,
-                output_path=str(output_path)
-            )
+            # 按 form_id 分组
+            form_groups: Dict[int, List[Submission]] = {}
+            for sub in submissions:
+                if sub.form_id not in form_groups:
+                    form_groups[sub.form_id] = []
+                form_groups[sub.form_id].append(sub)
 
-            # 返回下载URL
-            from app.services.storage_service import StorageService
-            # 上传到MinIO
-            with open(output_path, 'rb') as f:
-                upload_result = StorageService.upload_file(
-                    file_data=f.read(),
-                    filename=filename,
-                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    tenant_id=tenant_id,
-                    category="exports"
+            total = len(submissions)
+
+            # 判断同步还是异步
+            threshold = settings.EXPORT_ASYNC_THRESHOLD
+
+            if total <= threshold:
+                # 获取所有表单名称
+                form_ids = list(form_groups.keys())
+                forms = db.query(Form).filter(Form.id.in_(form_ids)).all()
+                form_names = {f.id: f.name for f in forms}
+
+                # 获取每个表单的最新版本
+                form_versions = {}
+                for fid in form_ids:
+                    version = db.query(FormVersion).filter(
+                        FormVersion.form_id == fid,
+                        FormVersion.version > 0
+                    ).order_by(FormVersion.version.desc()).first()
+                    if version:
+                        form_versions[fid] = version
+
+                # 生成文件
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                filename = f"export_multi_{timestamp}.xlsx"
+                output_path = Path(settings.EXPORT_TEMP_DIR) / filename
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                ExportService.export_multi_form_to_excel(
+                    form_groups=form_groups,
+                    form_names=form_names,
+                    form_versions=form_versions,
+                    field_ids=request.field_ids,
+                    desensitize=request.desensitize,
+                    output_path=str(output_path)
                 )
 
-            download_url = StorageService.get_download_url(upload_result["storage_path"], expires=86400)
+                # 上传到MinIO
+                from app.services.storage_service import StorageService
+                with open(output_path, 'rb') as f:
+                    upload_result = StorageService.upload_file(
+                        file_data=f.read(),
+                        filename=filename,
+                        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        tenant_id=tenant_id,
+                        category="exports"
+                    )
 
-            return {
-                "download_url": download_url,
-                "total_rows": total
-            }
+                download_url = StorageService.get_download_url(upload_result["storage_path"], expires=86400)
+
+                return {
+                    "download_url": download_url,
+                    "total_rows": total
+                }
+            else:
+                # 异步导出
+                task_id = ExportService.create_export_task(request, tenant_id, user_id)
+                return {
+                    "task_id": task_id,
+                    "total_rows": total
+                }
         else:
-            # 异步导出
-            task_id = ExportService.create_export_task(request, tenant_id, user_id)
+            # 单表单导出模式（原有逻辑）
+            query = db.query(Submission).filter(
+                Submission.form_id == request.form_id,
+                Submission.tenant_id == tenant_id
+            )
 
-            # TODO: 使用Celery或后台任务执行
-            # 这里简化处理，实际应该用异步任务队列
+            if request.submission_ids:
+                query = query.filter(Submission.id.in_(request.submission_ids))
 
-            return {
-                "task_id": task_id,
-                "total_rows": total
-            }
+            total = query.count()
+
+            # 判断同步还是异步
+            threshold = settings.EXPORT_ASYNC_THRESHOLD
+
+            if total <= threshold:
+                # 同步导出
+                submissions = query.all()
+                version = db.query(FormVersion).filter(
+                    FormVersion.form_id == request.form_id,
+                    FormVersion.version > 0
+                ).order_by(FormVersion.version.desc()).first()
+
+                if not version:
+                    raise NotFoundError("表单版本不存在")
+
+                # 获取表单名称
+                form = db.query(Form).filter(Form.id == request.form_id).first()
+                form_name = form.name if form else "提交数据"
+
+                # 生成文件
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                filename = f"export_{request.form_id}_{timestamp}.xlsx"
+                output_path = Path(settings.EXPORT_TEMP_DIR) / filename
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                ExportService.export_to_excel(
+                    submissions=submissions,
+                    form_version=version,
+                    form_name=form_name,
+                    field_ids=request.field_ids,
+                    desensitize=request.desensitize,
+                    output_path=str(output_path)
+                )
+
+                # 返回下载URL
+                from app.services.storage_service import StorageService
+                # 上传到MinIO
+                with open(output_path, 'rb') as f:
+                    upload_result = StorageService.upload_file(
+                        file_data=f.read(),
+                        filename=filename,
+                        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        tenant_id=tenant_id,
+                        category="exports"
+                    )
+
+                download_url = StorageService.get_download_url(upload_result["storage_path"], expires=86400)
+
+                return {
+                    "download_url": download_url,
+                    "total_rows": total
+                }
+            else:
+                # 异步导出
+                task_id = ExportService.create_export_task(request, tenant_id, user_id)
+
+                # TODO: 使用Celery或后台任务执行
+                # 这里简化处理，实际应该用异步任务队列
+
+                return {
+                    "task_id": task_id,
+                    "total_rows": total
+                }
 
     @staticmethod
     def export_to_excel(
             submissions: List[Submission],
             form_version: FormVersion,
-            field_ids: Optional[List[str]],
-            desensitize: bool,
-            output_path: str
+            form_name: str = "提交数据",
+            field_ids: Optional[List[str]] = None,
+            desensitize: bool = True,
+            output_path: str = ""
     ) -> str:
-        """导出为Excel"""
+        """导出为Excel（单表单）"""
         wb = Workbook()
         ws = wb.active
-        ws.title = "提交数据"
+        # Sheet 名限制 31 字符，且不能包含特殊字符
+        safe_name = re.sub(r'[\\/*?:\[\]]', '_', form_name)[:31]
+        ws.title = safe_name or "提交数据"
 
         # 获取字段信息
         schema_json = form_version.schema_json
@@ -158,6 +254,81 @@ class ExportService:
         # 保存文件
         wb.save(output_path)
         logger.info(f"Exported to Excel: {output_path}, rows={len(submissions)}")
+
+        return output_path
+
+    @staticmethod
+    def export_multi_form_to_excel(
+            form_groups: Dict[int, List[Submission]],
+            form_names: Dict[int, str],
+            form_versions: Dict[int, FormVersion],
+            field_ids: Optional[List[str]],
+            desensitize: bool,
+            output_path: str
+    ) -> str:
+        """导出为Excel（多表单，每个表单一个Sheet）"""
+        wb = Workbook()
+        # 删除默认创建的 Sheet
+        wb.remove(wb.active)
+
+        for form_id, submissions in form_groups.items():
+            form_name = form_names.get(form_id, f"表单{form_id}")
+            version = form_versions.get(form_id)
+
+            if not version:
+                logger.warning(f"Form {form_id} has no version, skipping")
+                continue
+
+            # Sheet 名限制 31 字符，且不能包含特殊字符
+            safe_name = re.sub(r'[\\/*?:\[\]]', '_', form_name)[:31]
+            ws = wb.create_sheet(title=safe_name or f"表单{form_id}")
+
+            # 获取字段信息
+            schema_json = version.schema_json
+            fields = schema_json.get("fields", [])
+
+            # 确定导出字段
+            if field_ids:
+                export_fields = [f for f in fields if f.get("id") in field_ids]
+            else:
+                export_fields = [f for f in fields if f.get("type") != "description"]
+
+            # 表头
+            headers = ["提交ID", "提交时间", "提交人", "状态"]
+            headers.extend([f.get("label", f.get("id")) for f in export_fields])
+
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+
+            # 数据行
+            for row_idx, submission in enumerate(submissions, 2):
+                data = submission.data_jsonb
+
+                # 脱敏处理
+                if desensitize:
+                    data = ExportService.desensitize_data(data, schema_json)
+
+                # 基础列
+                ws.cell(row=row_idx, column=1, value=submission.id)
+                ws.cell(row=row_idx, column=2, value=submission.created_at.strftime("%Y-%m-%d %H:%M:%S"))
+                ws.cell(row=row_idx, column=3, value=submission.submitter_user_id or "匿名")
+                ws.cell(row=row_idx, column=4, value=submission.status)
+
+                # 字段数据
+                for col_idx, field in enumerate(export_fields, 5):
+                    field_id = field.get("id")
+                    value = data.get(field_id)
+
+                    # 格式化值
+                    formatted_value = ExportService._format_field_value(value, field, submission.snapshot_json)
+                    ws.cell(row=row_idx, column=col_idx, value=formatted_value)
+
+        # 保存文件
+        wb.save(output_path)
+        total_rows = sum(len(subs) for subs in form_groups.values())
+        logger.info(f"Exported multi-form to Excel: {output_path}, sheets={len(form_groups)}, rows={total_rows}")
 
         return output_path
 

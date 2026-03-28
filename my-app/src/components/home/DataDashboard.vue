@@ -65,11 +65,11 @@
         </div>
       </div>
 
-      <!-- 审批通过率图 -->
+      <!-- 审批状态分布图 -->
       <div class="chart-card">
         <div class="card-header">
-          <h3 class="card-title">审批通过率</h3>
-          <n-tag size="small" type="success" :bordered="false">实时数据</n-tag>
+          <h3 class="card-title">审批状态分布</h3>
+          <n-tag size="small" type="success" :bordered="false">最近 7 天</n-tag>
         </div>
         <div class="card-content">
           <div class="chart-wrapper">
@@ -79,7 +79,7 @@
               ref="chartRef2" 
               class="chart-container"
               role="img" 
-              aria-label="审批通过率饼图"
+              aria-label="审批状态分布饼图"
             ></div>
           </div>
         </div>
@@ -89,15 +89,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { NIcon, NTag } from 'naive-ui'
 import { ClipboardOutline, CheckmarkCircleOutline, TimeOutline, TrendingUpOutline } from '@vicons/ionicons5'
-import { useHomeInteractive } from '@/stores/homeInteractive'
-import { getDashboardStats } from '@/api/dashboard'
-import type { DashboardStats } from '@/types/dashboard'
+import { getDashboardStats, getDashboardTrend, getDashboardDistribution } from '@/api/dashboard'
+import type { DashboardStats, DashboardTrend, DashboardDistribution } from '@/types/dashboard'
 
-const store = useHomeInteractive()
 const chartRef1 = ref<HTMLDivElement>()
 const chartRef2 = ref<HTMLDivElement>()
 const chartReady1 = ref(false)
@@ -109,6 +107,9 @@ const stats = ref<DashboardStats>({
   avg_processing_time_minutes: 0,
   approval_rate: 0,
 })
+
+const trendData = ref<DashboardTrend>({ data: [] })
+const distributionData = ref<DashboardDistribution>({ data: [] })
 
 let chart1: echarts.ECharts | null = null
 let chart2: echarts.ECharts | null = null
@@ -123,6 +124,12 @@ const formatTime = (minutes: number): string => {
   return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`
 }
 
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return weekdays[date.getDay()]
+}
+
 const fetchStats = async () => {
   try {
     const res = await getDashboardStats()
@@ -134,10 +141,81 @@ const fetchStats = async () => {
   }
 }
 
+const fetchTrend = async () => {
+  try {
+    const res = await getDashboardTrend()
+    if (res.data) {
+      trendData.value = res.data
+      updateTrendChart()
+    }
+  } catch (error) {
+    console.error('获取趋势数据失败:', error)
+  }
+}
+
+const fetchDistribution = async () => {
+  try {
+    const res = await getDashboardDistribution()
+    if (res.data) {
+      distributionData.value = res.data
+      updateDistributionChart()
+    }
+  } catch (error) {
+    console.error('获取分布数据失败:', error)
+  }
+}
+
+const updateTrendChart = () => {
+  if (!chart1 || trendData.value.data.length === 0) return
+  
+  const dates = trendData.value.data.map(item => formatDate(item.date))
+  const counts = trendData.value.data.map(item => item.count)
+  const maxValue = Math.max(...counts, 0)
+  const maxScale = calculateMaxScale(maxValue)
+  const interval = maxScale / 5  // 分成5等份
+  
+  chart1.setOption({
+    xAxis: { data: dates },
+    yAxis: {
+      min: 0,
+      max: maxScale,
+      interval: interval,
+      axisLabel: { 
+        color: '#666', 
+        fontSize: 13,
+        formatter: (value: number) => Math.round(value).toString()
+      }
+    },
+    series: [{ data: counts }]
+  })
+}
+
+const updateDistributionChart = () => {
+  if (!chart2 || distributionData.value.data.length === 0) return
+  
+  const colors: Record<string, string> = {
+    '已通过': '#18a058',
+    '已驳回': '#d03050',
+    '待处理': '#f0a020',
+  }
+  
+  const data = distributionData.value.data.map(item => ({
+    value: item.value,
+    name: item.name,
+    itemStyle: { color: colors[item.name] || '#999' }
+  }))
+  
+  chart2.setOption({
+    series: [{ data }]
+  })
+}
+
 onMounted(async () => {
   await nextTick()
   fetchStats()
   initCharts()
+  fetchTrend()
+  fetchDistribution()
   setupResizeObserver()
 })
 
@@ -156,9 +234,17 @@ onBeforeUnmount(() => {
   }
 })
 
-watch(() => store.scenario, () => {
-  updateCharts()
-})
+const calculateMaxScale = (maxValue: number): number => {
+  // 刻度应该是 5 的倍数，Y轴分成5等份
+  if (maxValue <= 1) return 5
+  if (maxValue <= 5) return 5
+  if (maxValue <= 25) return 25
+  if (maxValue <= 125) return 125
+  if (maxValue <= 625) return 625
+  // 超过625，向上取整到下一个5的幂次倍数
+  const power = Math.ceil(Math.log(maxValue / 5) / Math.log(5))
+  return 5 * Math.pow(5, power)
+}
 
 const initCharts = () => {
   if (chartRef1.value) {
@@ -179,17 +265,32 @@ const initCharts = () => {
       },
       yAxis: {
         type: 'value',
+        min: 0,
+        max: 5,
+        interval: 1,
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } },
-        axisLabel: { color: '#666', fontSize: 13 }
+        axisLabel: { 
+          color: '#666', 
+          fontSize: 13,
+          formatter: (value: number) => Math.round(value).toString()
+        }
       },
       series: [{
-        data: [120, 200, 150, 80, 70, 110, 130],
+        data: [0, 0, 0, 0, 0, 0, 0],
         type: 'line',
         smooth: true,
         symbol: 'circle',
         symbolSize: 8,
+        label: {
+          show: true,
+          position: 'top',
+          color: '#18a058',
+          fontSize: 12,
+          fontWeight: 'bold',
+          formatter: (params: any) => params.value > 0 ? params.value : ''
+        },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: 'rgba(24, 160, 88, 0.3)' },
@@ -206,7 +307,11 @@ const initCharts = () => {
         borderWidth: 1,
         textStyle: { color: '#333', fontSize: 14 },
         padding: [10, 14],
-        extraCssText: 'border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);'
+        extraCssText: 'border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);',
+        formatter: (params: any) => {
+          const data = params[0]
+          return `${data.name}<br/>提交量: <strong>${data.value}</strong>`
+        }
       }
     })
     chartReady1.value = true
@@ -256,28 +361,10 @@ const initCharts = () => {
             shadowColor: 'rgba(0, 0, 0, 0.3)' 
           }
         },
-        data: [
-          { value: store.autoDecision.pass, name: '自动通过', itemStyle: { color: '#18a058' } },
-          { value: store.autoDecision.manual, name: '转人工', itemStyle: { color: '#f0a020' } },
-          { value: store.autoDecision.reject, name: '自动驳回', itemStyle: { color: '#d03050' } }
-        ]
+        data: []
       }]
     })
     chartReady2.value = true
-  }
-}
-
-const updateCharts = () => {
-  if (chart2) {
-    chart2.setOption({
-      series: [{
-        data: [
-          { value: store.autoDecision.pass, name: '自动通过', itemStyle: { color: '#18a058' } },
-          { value: store.autoDecision.manual, name: '转人工', itemStyle: { color: '#f0a020' } },
-          { value: store.autoDecision.reject, name: '自动驳回', itemStyle: { color: '#d03050' } }
-        ]
-      }]
-    })
   }
 }
 

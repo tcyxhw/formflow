@@ -8,12 +8,15 @@
     - BatchImportService.validate_row(): 验证单行数据
     - BatchImportService.import_users(): 批量导入用户
     - BatchImportService.save_import_log(): 保存导入日志
+    - BatchImportService.preview_import(): 预览导入数据
+    - BatchImportService.confirm_import(): 确认导入数据
 """
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 from io import BytesIO
 import logging
 import json
+import uuid
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -27,8 +30,12 @@ from app.models.user import (
 from app.models.batch_import import BatchImportLog
 from app.core.security import hash_password
 from app.core.exceptions import ValidationError, BusinessError
+from app.core.redis_client import redis_client
 from app.schemas.batch_import import (
     BatchImportUserRow, BatchImportRowResult, BatchImportResponse
+)
+from app.schemas.user_management import (
+    ImportPreviewRow, ImportPreviewResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -372,7 +379,8 @@ class BatchImportService:
         tenant_id: int,
         default_password: str,
         operator_user_id: int,
-        db: Session
+        db: Session,
+        default_department_id: Optional[int] = None
     ) -> BatchImportResponse:
         """
         批量导入用户
@@ -384,6 +392,7 @@ class BatchImportService:
             default_password: 默认密码
             operator_user_id: 操作人ID
             db: 数据库会话
+            default_department_id: 默认部门ID（可选）
 
         Returns:
             BatchImportResponse: 导入结果
@@ -433,10 +442,31 @@ class BatchImportService:
 
             try:
                 # 获取部门ID
-                dept = db.query(Department).filter(
-                    Department.tenant_id == tenant_id,
-                    Department.name == validated_data.department_name
-                ).first()
+                dept = None
+                if validated_data.department_name:
+                    dept = db.query(Department).filter(
+                        Department.tenant_id == tenant_id,
+                        Department.name == validated_data.department_name
+                    ).first()
+                
+                # 如果没有找到部门，使用默认部门
+                if not dept and default_department_id:
+                    dept = db.query(Department).filter(
+                        Department.tenant_id == tenant_id,
+                        Department.id == default_department_id
+                    ).first()
+                
+                # 如果仍然没有部门，跳过该用户
+                if not dept:
+                    results.append(BatchImportRowResult(
+                        row_number=row_number,
+                        success=False,
+                        account=validated_data.account,
+                        name=validated_data.name,
+                        error_message="未找到对应的部门，请在Excel中指定部门或设置默认部门"
+                    ))
+                    failed_count += 1
+                    continue
 
                 # 获取岗位ID（如果指定了）
                 pos = None
@@ -550,4 +580,294 @@ class BatchImportService:
             failed_count=failed_count,
             results=results,
             default_password=default_password
+        )
+
+    @staticmethod
+    async def preview_import(
+        file_content: bytes,
+        tenant_id: int,
+        db: Session
+    ) -> ImportPreviewResponse:
+        """
+        预览导入数据
+
+        Args:
+            file_content: Excel文件内容
+            tenant_id: 租户ID
+            db: 数据库会话
+
+        Returns:
+            ImportPreviewResponse: 预览数据
+        """
+        # 解析Excel
+        rows = BatchImportService.parse_excel(file_content)
+
+        if not rows:
+            raise ValidationError("Excel文件中没有数据")
+
+        # 验证每一行
+        preview_rows = []
+        valid_count = 0
+        invalid_count = 0
+        existing_accounts = set()
+
+        for row_data in rows:
+            row_number = row_data.get('row_number', 0)
+            validated_data, error_msg = BatchImportService.validate_row(
+                row_data, tenant_id, db, existing_accounts
+            )
+
+            is_valid = error_msg is None
+            if is_valid:
+                valid_count += 1
+            else:
+                invalid_count += 1
+
+            preview_row = ImportPreviewRow(
+                row_index=row_number,
+                account=row_data.get('account', ''),
+                name=row_data.get('name', ''),
+                email=row_data.get('email'),
+                phone=str(row_data.get('phone', '')) if row_data.get('phone') else None,
+                department_name=row_data.get('department_name', ''),
+                position_name=row_data.get('position_name'),
+                role=row_data.get('identity_type'),
+                is_valid=is_valid,
+                error_message=error_msg
+            )
+            preview_rows.append(preview_row)
+
+        # 生成preview_key
+        preview_key = f"import_preview:{tenant_id}:{uuid.uuid4().hex}"
+
+        # 存储预览数据到Redis（30分钟过期）
+        preview_data = {
+            "rows": [row.model_dump() for row in preview_rows],
+            "file_content": file_content.hex()
+        }
+        await redis_client.set(preview_key, preview_data, expire=1800)
+
+        logger.info(f"生成导入预览: key={preview_key}, total={len(rows)}, valid={valid_count}, invalid={invalid_count}")
+
+        return ImportPreviewResponse(
+            preview_key=preview_key,
+            total_rows=len(rows),
+            valid_rows=valid_count,
+            invalid_rows=invalid_count,
+            rows=preview_rows
+        )
+
+    @staticmethod
+    async def confirm_import(
+        preview_key: str,
+        selected_rows: Optional[List[int]],
+        tenant_id: int,
+        operator_user_id: int,
+        db: Session
+    ) -> BatchImportResponse:
+        """
+        确认导入数据
+
+        Args:
+            preview_key: 预览key
+            selected_rows: 选中的行索引列表，为空则导入全部有效行
+            tenant_id: 租户ID
+            operator_user_id: 操作人ID
+            db: 数据库会话
+
+        Returns:
+            BatchImportResponse: 导入结果
+        """
+        # 从Redis获取预览数据
+        preview_data = await redis_client.get(preview_key)
+        if not preview_data:
+            raise ValidationError("预览数据已过期，请重新上传文件")
+
+        rows_data = preview_data.get("rows", [])
+        if not rows_data:
+            raise ValidationError("预览数据为空")
+
+        # 确定要导入的行
+        if selected_rows:
+            # 导入选中的行
+            rows_to_import = [r for r in rows_data if r.get("row_index") in selected_rows and r.get("is_valid")]
+        else:
+            # 导入全部有效行
+            rows_to_import = [r for r in rows_data if r.get("is_valid")]
+
+        if not rows_to_import:
+            raise ValidationError("没有可导入的有效数据")
+
+        # 解析文件内容重新获取原始数据
+        file_content = bytes.fromhex(preview_data.get("file_content", ""))
+        original_rows = BatchImportService.parse_excel(file_content)
+
+        # 构建行号到原始数据的映射
+        row_map = {r.get("row_number"): r for r in original_rows}
+
+        # 获取默认角色
+        student_role = db.query(Role).filter(
+            Role.tenant_id == tenant_id,
+            Role.name == "学生"
+        ).first()
+
+        teacher_role = db.query(Role).filter(
+            Role.tenant_id == tenant_id,
+            Role.name == "老师"
+        ).first()
+
+        # 执行导入
+        results = []
+        success_count = 0
+        failed_count = 0
+        existing_accounts = set()
+        hashed_password = hash_password("123456")
+
+        for import_row in rows_to_import:
+            row_index = import_row.get("row_index")
+            row_data = row_map.get(row_index)
+
+            if not row_data:
+                continue
+
+            # 验证数据
+            validated_data, error_msg = BatchImportService.validate_row(
+                row_data, tenant_id, db, existing_accounts
+            )
+
+            if error_msg:
+                results.append(BatchImportRowResult(
+                    row_number=row_index,
+                    success=False,
+                    account=row_data.get('account'),
+                    name=row_data.get('name'),
+                    error_message=error_msg
+                ))
+                failed_count += 1
+                continue
+
+            try:
+                # 获取部门ID
+                dept = db.query(Department).filter(
+                    Department.tenant_id == tenant_id,
+                    Department.name == validated_data.department_name
+                ).first()
+
+                # 获取岗位ID（如果指定了）
+                pos = None
+                if validated_data.position_name:
+                    pos = db.query(Position).filter(
+                        Position.tenant_id == tenant_id,
+                        Position.name == validated_data.position_name
+                    ).first()
+
+                # 创建用户
+                new_user = User(
+                    tenant_id=tenant_id,
+                    account=validated_data.account,
+                    name=validated_data.name,
+                    password_hash=hashed_password,
+                    email=validated_data.email,
+                    phone=validated_data.phone,
+                    department_id=dept.id,
+                    is_active=True
+                )
+                db.add(new_user)
+                db.flush()
+
+                # 创建用户扩展信息
+                profile = UserProfile(
+                    user_id=new_user.id,
+                    identity_no=validated_data.identity_no,
+                    identity_type=validated_data.identity_type,
+                    entry_year=validated_data.entry_year,
+                    grade=validated_data.grade,
+                    major=validated_data.major,
+                    title=validated_data.title,
+                    research_area=validated_data.research_area,
+                    office=validated_data.office,
+                    emergency_contact=validated_data.emergency_contact,
+                    emergency_phone=validated_data.emergency_phone
+                )
+                db.add(profile)
+
+                # 创建用户-部门关联
+                user_dept = UserDepartment(
+                    tenant_id=tenant_id,
+                    user_id=new_user.id,
+                    department_id=dept.id,
+                    is_primary=True
+                )
+                db.add(user_dept)
+
+                # 创建用户-部门-岗位关联（如果指定了岗位）
+                if pos:
+                    user_dept_post = UserDepartmentPost(
+                        tenant_id=tenant_id,
+                        user_id=new_user.id,
+                        department_id=dept.id,
+                        post_id=pos.id
+                    )
+                    db.add(user_dept_post)
+
+                # 分配角色
+                role = student_role if validated_data.identity_type == 'student' else teacher_role
+                if role:
+                    user_role = UserRole(
+                        tenant_id=tenant_id,
+                        user_id=new_user.id,
+                        role_id=role.id
+                    )
+                    db.add(user_role)
+
+                # 提交当前用户
+                db.commit()
+
+                results.append(BatchImportRowResult(
+                    row_number=row_index,
+                    success=True,
+                    account=validated_data.account,
+                    name=validated_data.name,
+                    user_id=new_user.id
+                ))
+                success_count += 1
+
+            except Exception as e:
+                db.rollback()
+                logger.error(f"创建用户失败 (行{row_index}): {str(e)}")
+                results.append(BatchImportRowResult(
+                    row_number=row_index,
+                    success=False,
+                    account=validated_data.account,
+                    name=validated_data.name,
+                    error_message=str(e)
+                ))
+                failed_count += 1
+                continue
+
+        # 保存导入日志
+        BatchImportService.save_import_log(
+            filename="preview_import",
+            total_rows=len(rows_to_import),
+            success_count=success_count,
+            failed_count=failed_count,
+            default_password="123456",
+            results=results,
+            operator_user_id=operator_user_id,
+            tenant_id=tenant_id,
+            db=db
+        )
+        db.commit()
+
+        # 删除预览数据
+        await redis_client.delete(preview_key)
+
+        logger.info(f"确认导入完成: key={preview_key}, success={success_count}, failed={failed_count}")
+
+        return BatchImportResponse(
+            total_rows=len(rows_to_import),
+            success_count=success_count,
+            failed_count=failed_count,
+            results=results,
+            default_password="123456"
         )

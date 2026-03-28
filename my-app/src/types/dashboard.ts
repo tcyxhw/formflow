@@ -9,3 +9,21 @@ export interface DashboardStats {
   avg_processing_time_minutes: number
   approval_rate: number
 }
+
+export interface DailySubmissionCount {
+  date: string
+  count: number
+}
+
+export interface DashboardTrend {
+  data: DailySubmissionCount[]
+}
+
+export interface StatusDistributionItem {
+  name: string
+  value: number
+}
+
+export interface DashboardDistribution {
+  data: StatusDistributionItem[]
+}

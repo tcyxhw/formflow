@@ -235,7 +235,7 @@
                 <n-empty v-if="!flowNodes.length" description="暂未配置审批流程" />
                 <div v-else class="flow-diagram-wrapper">
                   <div class="flow-diagram">
-                    <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" />
+                    <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
                   </div>
                 </div>
               </div>
@@ -284,6 +284,7 @@
   const detailFields = ref<any[]>([])
   const flowNodes = ref<any[]>([])
   const flowRoutes = ref<any[]>([])
+  const fieldLabels = ref<Record<string, string>>({})
 
   interface FilterState {
     keyword: string
@@ -527,12 +528,21 @@
     detailFields.value = []
     flowNodes.value = []
     flowRoutes.value = []
+    fieldLabels.value = {}
 
     try {
       // 获取表单详情（包含字段信息）
       const formDetail = await formApi.getFormDetail(row.id)
       if (formDetail.data?.schema_json?.fields) {
         detailFields.value = formDetail.data.schema_json.fields
+        // 构建字段标签映射
+        const labels: Record<string, string> = {}
+        for (const field of detailFields.value) {
+          if (field.id && field.label) {
+            labels[field.id] = field.label
+          }
+        }
+        fieldLabels.value = labels
       }
 
       // 如果有流程定义，获取流程详情

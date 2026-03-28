@@ -193,10 +193,14 @@ const authRoutes: RouteRecordRaw[] = [
     meta: { title: '管理员' },
     children: [
       {
-        path: 'batch-import',
-        name: 'AdminBatchImport',
+        path: 'users',
+        name: 'AdminUsers',
         component: () => import('@/views/admin/BatchImport.vue'),
-        meta: { title: '批量用户导入', requiresAuth: true }
+        meta: { title: '用户管理', requiresAuth: true }
+      },
+      {
+        path: 'batch-import',
+        redirect: '/admin/users'
       }
     ]
   },

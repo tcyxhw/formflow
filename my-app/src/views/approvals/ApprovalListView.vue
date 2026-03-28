@@ -54,10 +54,6 @@
           <n-switch v-model:value="filters.only_mine" @update:value="handleImmediateFilter" />
         </n-form-item>
 
-        <n-form-item label="含组待办">
-          <n-switch v-model:value="filters.include_group_tasks" @update:value="handleImmediateFilter" />
-        </n-form-item>
-
         <n-form-item>
           <n-button type="primary" @click="handleSearch">查询</n-button>
         </n-form-item>
@@ -89,38 +85,6 @@
           :page-sizes="[10, 20, 30, 50]"
           @update:page="handlePageChange"
           @update:page-size="handlePageSizeChange"
-        />
-      </div>
-    </n-card>
-
-    <n-card
-      v-if="filters.include_group_tasks"
-      class="table-card"
-      title="小组待办池"
-      size="small"
-    >
-      <template #header-extra>
-        <div class="group-hint">未被认领的组任务，可快速认领</div>
-      </template>
-      <n-spin :show="groupLoading">
-        <n-data-table
-          :columns="groupColumns"
-          :data="groupTasks"
-          :bordered="false"
-          :row-key="rowKey"
-          size="small"
-          :loading="groupLoading"
-        />
-      </n-spin>
-      <div class="table-footer">
-        <n-pagination
-          :page="groupPagination.page"
-          :page-size="groupPagination.pageSize"
-          :item-count="groupPagination.total"
-          show-size-picker
-          :page-sizes="[10, 20, 30, 50]"
-          @update:page="handleGroupPageChange"
-          @update:page-size="handleGroupPageSizeChange"
         />
       </div>
     </n-card>
@@ -347,13 +311,13 @@ import type { AttachmentInfo } from '@/types/attachment'
 import {
   claimTask,
   getTaskSlaSummary,
-  listGroupTasks,
   listTasks,
   performTaskAction,
   releaseTask,
   transferTask
 } from '@/api/approvals'
 import { getAttachment } from '@/api/attachment'
+import { getFormFields } from '@/api/form'
 import { useAuthStore } from '@/stores/auth'
 
 import { formatActionLabel, formatActorLabel } from '@/utils/audit'
@@ -382,16 +346,8 @@ const loading = ref(false)
 const summaryLoading = ref(false)
 const tasks = ref<TaskResponse[]>([])
 const slaSummary = ref<TaskSlaSummary | null>(null)
-const groupLoading = ref(false)
-const groupTasks = ref<TaskResponse[]>([])
 
 const pagination = reactive<PaginationState>({
-  page: 1,
-  pageSize: 10,
-  total: 0
-})
-
-const groupPagination = reactive<PaginationState>({
   page: 1,
   pageSize: 10,
   total: 0
@@ -400,7 +356,6 @@ const groupPagination = reactive<PaginationState>({
 const filters = reactive<TaskListQuery>({
   status: null,
   only_mine: true,
-  include_group_tasks: true,
   keyword: '',
   sla_level: null
 })
@@ -498,8 +453,8 @@ const optionValueMap: Record<string, string> = {
   false: '否'
 }
 
-// 字段标签映射
-const fieldLabelMap: Record<string, string> = {
+// 字段标签映射（默认常用字段，动态加载表单字段后会合并更新）
+const fieldLabelMap = ref<Record<string, string>>({
   name: '姓名',
   title: '标题',
   content: '内容',
@@ -543,7 +498,7 @@ const fieldLabelMap: Record<string, string> = {
   startDate: '开始日期',
   endDate: '结束日期',
   leaveDays: '请假天数'
-}
+})
 
 interface SummaryMetric {
   key: string
@@ -649,20 +604,21 @@ function isTimestamp(value: unknown): boolean {
 
 // 获取字段标签
 function getFieldLabel(key: string): string {
+  const map = fieldLabelMap.value
   // 直接匹配
-  if (fieldLabelMap[key]) return fieldLabelMap[key]
-  
+  if (map[key]) return map[key]
+
   // 小写匹配
   const keyLower = key.toLowerCase()
-  for (const [k, v] of Object.entries(fieldLabelMap)) {
+  for (const [k, v] of Object.entries(map)) {
     if (keyLower === k.toLowerCase()) return v
   }
-  
+
   // 包含匹配
-  for (const [k, v] of Object.entries(fieldLabelMap)) {
+  for (const [k, v] of Object.entries(map)) {
     if (keyLower.includes(k.toLowerCase())) return v
   }
-  
+
   return key
 }
 
@@ -959,7 +915,6 @@ async function loadTasks() {
       page_size: pagination.pageSize,
       status: filters.status,
       only_mine: filters.only_mine,
-      include_group_tasks: filters.include_group_tasks,
       keyword: filters.keyword,
       sla_level: filters.sla_level
     }
@@ -981,7 +936,6 @@ async function loadSlaSummary() {
     const params: TaskListQuery = {
       status: filters.status,
       only_mine: filters.only_mine,
-      include_group_tasks: filters.include_group_tasks,
       keyword: filters.keyword,
       sla_level: filters.sla_level
     }
@@ -991,23 +945,6 @@ async function loadSlaSummary() {
     console.error('加载 SLA 摘要失败:', error)
   } finally {
     summaryLoading.value = false
-  }
-}
-
-// 加载组任务列表
-async function loadGroupTasks() {
-  groupLoading.value = true
-  try {
-    const { data } = await listGroupTasks({
-      page: groupPagination.page,
-      page_size: groupPagination.pageSize
-    })
-    groupTasks.value = data.items
-    groupPagination.total = data.total
-  } catch (error) {
-    console.error('加载组任务失败:', error)
-  } finally {
-    groupLoading.value = false
   }
 }
 
@@ -1026,7 +963,6 @@ function handleReset() {
   filters.status = null
   filters.sla_level = null
   filters.only_mine = true
-  filters.include_group_tasks = true
   pagination.page = 1
   loadTasks()
   loadSlaSummary()
@@ -1052,23 +988,31 @@ function handlePageSizeChange(size: number) {
   loadTasks()
 }
 
-function handleGroupPageChange(page: number) {
-  groupPagination.page = page
-  loadGroupTasks()
-}
-
-function handleGroupPageSizeChange(size: number) {
-  groupPagination.pageSize = size
-  groupPagination.page = 1
-  loadGroupTasks()
-}
-
 // ========== 操作相关函数 ==========
 
 // 查看详情
-function handleViewDetail(row: TaskResponse) {
+async function handleViewDetail(row: TaskResponse) {
   detailTask.value = row
   detailModalVisible.value = true
+
+  // 动态加载表单字段标签
+  if (row.form_id) {
+    try {
+      const res = await getFormFields(row.form_id)
+      if (res.data?.fields) {
+        const dynamicLabels: Record<string, string> = {}
+        for (const field of res.data.fields) {
+          if (field.key && field.name) {
+            dynamicLabels[field.key] = field.name
+          }
+        }
+        // 合并到字段标签映射中（动态标签优先）
+        fieldLabelMap.value = { ...fieldLabelMap.value, ...dynamicLabels }
+      }
+    } catch (e) {
+      console.warn('获取表单字段标签失败，使用默认映射:', e)
+    }
+  }
 }
 
 // 认领任务
@@ -1282,69 +1226,11 @@ const columns: DataTableColumns<TaskResponse> = [
   }
 ]
 
-const groupColumns: DataTableColumns<TaskResponse> = [
-  {
-    title: 'ID',
-    key: 'id',
-    width: 80
-  },
-  {
-    title: '流程名称',
-    key: 'flow_name',
-    minWidth: 160,
-    ellipsis: { tooltip: true },
-    render(row) {
-      return row.flow_name || '—'
-    }
-  },
-  {
-    title: '节点名称',
-    key: 'node_name',
-    minWidth: 120,
-    render(row) {
-      return row.node_name || '—'
-    }
-  },
-  {
-    title: '提交人',
-    key: 'submitter_name',
-    minWidth: 100,
-    render(row) {
-      return row.submitter_name || '—'
-    }
-  },
-  {
-    title: '创建时间',
-    key: 'created_at',
-    width: 180,
-    render(row) {
-      return formatDate(row.created_at)
-    }
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 200,
-    fixed: 'right',
-    render(row) {
-      return h(
-        'div',
-        { style: 'display: flex; gap: 8px;' },
-        [
-          h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleClaim(row) }, { default: () => '认领' }),
-          h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewDetail(row) }, { default: () => '详情' })
-        ]
-      )
-    }
-  }
-]
-
 // ========== 初始化 ==========
 
 onMounted(() => {
   loadTasks()
   loadSlaSummary()
-  loadGroupTasks()
 })
 </script>
 
@@ -1408,11 +1294,6 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
-}
-
-.group-hint {
-  font-size: 12px;
-  color: #909399;
 }
 
 .action-form {

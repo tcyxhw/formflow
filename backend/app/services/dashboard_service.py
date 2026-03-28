@@ -4,6 +4,8 @@
 数据流向: API 层 -> DashboardService -> 数据库 -> Pydantic Schema
 函数清单:
     - DashboardService.get_stats(): 获取首页统计数据
+    - DashboardService.get_trend(): 获取提交量趋势
+    - DashboardService.get_distribution(): 获取审批状态分布
 """
 from __future__ import annotations
 
@@ -11,12 +13,19 @@ import logging
 from datetime import datetime, timedelta
 from typing import List
 
-from sqlalchemy import and_, case, extract, func, or_
+from sqlalchemy import and_, extract, func, or_
 from sqlalchemy.orm import Session
 
+from app.models.form import Submission
 from app.models.user import ApprovalGroupMember, User
 from app.models.workflow import ProcessInstance, Task, WorkflowOperationLog
-from app.schemas.dashboard_schemas import DashboardStatsResponse
+from app.schemas.dashboard_schemas import (
+    DashboardStatsResponse,
+    DashboardTrendResponse,
+    DailySubmissionCount,
+    DashboardDistributionResponse,
+    StatusDistributionItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +80,96 @@ class DashboardService:
             avg_processing_time_minutes=avg_processing_time,
             approval_rate=approval_rate,
         )
+
+    @staticmethod
+    def get_trend(
+        tenant_id: int,
+        db: Session,
+    ) -> DashboardTrendResponse:
+        """获取最近7天提交量趋势。
+
+        :param tenant_id: 租户 ID
+        :param db: 数据库会话
+        :return: 趋势数据响应
+
+        Time: O(N), Space: O(1)
+        """
+
+        # 生成最近7天的日期列表
+        today = datetime.utcnow().date()
+        dates = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
+
+        # 查询每天的提交量
+        results = (
+            db.query(
+                func.date(Submission.created_at).label("date"),
+                func.count(Submission.id).label("count"),
+            )
+            .filter(Submission.tenant_id == tenant_id)
+            .filter(Submission.created_at >= datetime.combine(dates[0], datetime.min.time()))
+            .group_by(func.date(Submission.created_at))
+            .all()
+        )
+
+        # 构建日期到数量的映射
+        count_map = {row.date.isoformat(): row.count for row in results}
+
+        # 填充7天数据
+        data = [
+            DailySubmissionCount(
+                date=date.isoformat(),
+                count=count_map.get(date.isoformat(), 0),
+            )
+            for date in dates
+        ]
+
+        return DashboardTrendResponse(data=data)
+
+    @staticmethod
+    def get_distribution(
+        tenant_id: int,
+        db: Session,
+    ) -> DashboardDistributionResponse:
+        """获取审批状态分布（最近7天）。
+
+        :param tenant_id: 租户 ID
+        :param db: 数据库会话
+        :return: 分布数据响应
+
+        Time: O(N), Space: O(1)
+        """
+
+        week_ago = datetime.utcnow() - timedelta(days=7)
+
+        # 查询各种操作类型的数量
+        results = (
+            db.query(
+                WorkflowOperationLog.operation_type,
+                func.count(WorkflowOperationLog.id).label("count"),
+            )
+            .filter(WorkflowOperationLog.tenant_id == tenant_id)
+            .filter(WorkflowOperationLog.created_at >= week_ago)
+            .filter(WorkflowOperationLog.operation_type.in_(["APPROVE", "REJECT"]))
+            .group_by(WorkflowOperationLog.operation_type)
+            .all()
+        )
+
+        # 构建状态映射
+        status_map = {row.operation_type: row.count for row in results}
+
+        # 构建分布数据
+        data = [
+            StatusDistributionItem(
+                name="已通过",
+                value=status_map.get("APPROVE", 0),
+            ),
+            StatusDistributionItem(
+                name="已驳回",
+                value=status_map.get("REJECT", 0),
+            ),
+        ]
+
+        return DashboardDistributionResponse(data=data)
 
     @staticmethod
     def _get_user_group_ids(user_id: int, tenant_id: int, db: Session) -> List[int]:

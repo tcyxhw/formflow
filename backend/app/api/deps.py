@@ -93,6 +93,8 @@ async def get_current_tenant_id(
     """
     获取当前操作的租户 ID
     """
+    if user.current_tenant_id is None:
+        raise AuthenticationError("租户ID缺失")
     return user.current_tenant_id
 
 

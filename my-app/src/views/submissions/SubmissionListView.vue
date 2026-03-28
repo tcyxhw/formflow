@@ -17,9 +17,6 @@
               </template>
               返回主页
             </n-button>
-            <n-button type="primary" :loading="exporting" @click="handleExport">
-              导出数据
-            </n-button>
           </n-space>
         </template>
       </n-page-header>
@@ -66,24 +63,49 @@
         <template #header>
           <div class="table-header">
             <h3>提交列表</h3>
-            <n-button text @click="fetchList">
-              <template #icon>
-                <n-icon :component="RefreshOutline" />
-              </template>
-              刷新
-            </n-button>
+            <n-space>
+              <n-button text @click="fetchList">
+                <template #icon>
+                  <n-icon :component="RefreshOutline" />
+                </template>
+                刷新
+              </n-button>
+            </n-space>
           </div>
         </template>
 
+        <div class="table-actions" v-if="checkedRowKeys.length > 0">
+          <n-space align="center">
+            <span class="selection-info">已选中 {{ checkedRowKeys.length }} 条记录</span>
+            <n-button type="primary" size="small" :loading="exporting" @click="handleExportSelected">
+              <template #icon>
+                <n-icon :component="DownloadOutline" />
+              </template>
+              导出选中
+            </n-button>
+            <n-button size="small" @click="clearSelection">取消选中</n-button>
+          </n-space>
+        </div>
+
         <n-data-table
+          v-model:checked-row-keys="checkedRowKeys"
           :columns="columns"
           :data="submissions"
+          :row-key="(row: SubmissionListItem) => row.id"
           :bordered="false"
           :single-line="false"
           striped
         />
 
         <div class="table-footer">
+          <div class="export-section">
+            <n-button type="primary" :loading="exporting" @click="handleExportAll">
+              <template #icon>
+                <n-icon :component="DownloadOutline" />
+              </template>
+              导出全部
+            </n-button>
+          </div>
           <n-pagination
             v-model:page="pagination.page"
             v-model:page-size="pagination.pageSize"
@@ -142,7 +164,7 @@
 import { ref, reactive, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage, useDialog, NButton, NTag, NSpace, NIcon, type DataTableColumns } from 'naive-ui'
-import { RefreshOutline, HomeOutline } from '@vicons/ionicons5'
+import { RefreshOutline, HomeOutline, DownloadOutline } from '@vicons/ionicons5'
 import {
   getSubmissionList,
   deleteSubmission,
@@ -167,6 +189,7 @@ const selectedSubmissionId = ref<number | undefined>()
 const loading = ref(false)
 const exporting = ref(false)
 const submissions = ref<SubmissionListItem[]>([])
+const checkedRowKeys = ref<number[]>([])
 
 const pagination = reactive({
   page: 1,
@@ -253,6 +276,10 @@ const confirmDelete = (id: number) => {
       }
     }
   })
+}
+
+const clearSelection = () => {
+  checkedRowKeys.value = []
 }
 
 // 表格列定义
@@ -375,7 +402,66 @@ const resetFilters = () => {
   fetchList()
 }
 
-const handleExport = async () => {
+// 处理导出响应
+const handleExportResponse = async (res: { code: number; data?: SubmissionExportSyncResponse | SubmissionExportAsyncResponse }) => {
+  if (res.code === 200 && res.data) {
+    if ((res.data as SubmissionExportSyncResponse).download_url) {
+      const syncData = res.data as SubmissionExportSyncResponse
+      exportDialog.mode = 'sync'
+      exportDialog.downloadUrl = syncData.download_url
+      exportDialog.visible = true
+    } else {
+      const asyncData = res.data as SubmissionExportAsyncResponse
+      exportDialog.mode = 'async'
+      exportDialog.taskId = asyncData.task_id
+      exportDialog.visible = true
+      pollExportTask(asyncData.task_id)
+    }
+  }
+}
+
+// 导出选中的记录
+const handleExportSelected = async () => {
+  if (checkedRowKeys.value.length === 0) {
+    message.warning('请先选择要导出的记录')
+    return
+  }
+
+  exporting.value = true
+  try {
+    // 获取选中记录的 form_id
+    const selectedSubmissions = submissions.value.filter(s => checkedRowKeys.value.includes(s.id))
+    const formIds = [...new Set(selectedSubmissions.map(s => s.form_id))]
+
+    if (formIds.length === 1) {
+      // 单表单导出
+      const payload: SubmissionExportRequest = {
+        form_id: formIds[0],
+        format: 'excel',
+        submission_ids: checkedRowKeys.value,
+      }
+      const res = await exportSubmissions(payload)
+      await handleExportResponse(res)
+    } else {
+      // 多表单导出（每个表单一个 Sheet）
+      const payload: SubmissionExportRequest = {
+        form_id: undefined,
+        format: 'excel',
+        submission_ids: checkedRowKeys.value,
+      }
+      const res = await exportSubmissions(payload)
+      await handleExportResponse(res)
+    }
+  } catch (error) {
+    console.error('Failed to export selected submissions:', error)
+    message.error('导出失败，请稍后重试')
+  } finally {
+    exporting.value = false
+  }
+}
+
+// 导出全部（按当前筛选条件）
+const handleExportAll = async () => {
   if (!filters.form_id) {
     message.warning('请先指定表单 ID 再导出数据')
     return
@@ -389,20 +475,7 @@ const handleExport = async () => {
       submission_ids: submissions.value.map((item) => item.id),
     }
     const res = await exportSubmissions(payload)
-    if (res.code === 200 && res.data) {
-      if ((res.data as SubmissionExportSyncResponse).download_url) {
-        const syncData = res.data as SubmissionExportSyncResponse
-        exportDialog.mode = 'sync'
-        exportDialog.downloadUrl = syncData.download_url
-        exportDialog.visible = true
-      } else {
-        const asyncData = res.data as SubmissionExportAsyncResponse
-        exportDialog.mode = 'async'
-        exportDialog.taskId = asyncData.task_id
-        exportDialog.visible = true
-        pollExportTask(asyncData.task_id)
-      }
-    }
+    await handleExportResponse(res)
   } catch (error) {
     console.error('Failed to export submissions:', error)
     message.error('导出失败，请稍后重试')
@@ -445,7 +518,7 @@ const goHome = () => {
 onMounted(fetchList)
 </script>
 
-<style >
+<style scoped>
 .submission-list-page {
   padding: 20px;
 }
@@ -464,9 +537,27 @@ onMounted(fetchList)
   margin: 0;
 }
 
+.table-actions {
+  margin-bottom: 12px;
+  padding: 12px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.selection-info {
+  color: #666;
+  font-size: 14px;
+}
+
 .table-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 16px;
+}
+
+.export-section {
+  display: flex;
+  align-items: center;
 }
 </style>

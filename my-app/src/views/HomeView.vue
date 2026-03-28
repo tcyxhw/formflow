@@ -21,11 +21,11 @@
           <button type="button" class="nav-item" @click="handleNav('/submissions')">提交记录</button>
           
           <!-- 管理下拉组 -->
-          <div class="nav-group" @mouseenter="activeGroup = 'admin'" @mouseleave="activeGroup = null" v-if="canAccessImport || isAdmin">
+          <div class="nav-group" @mouseenter="activeGroup = 'admin'" @mouseleave="activeGroup = null" v-if="canAccessImport || canAccessUserManagement">
             <button type="button" class="nav-item">管理</button>
             <div class="nav-dropdown" v-show="activeGroup === 'admin'">
               <button class="dropdown-item" @click="handleNav('/department/import')" v-if="canAccessImport">岗位导入</button>
-              <button class="dropdown-item" @click="handleNav('/admin/batch-import')" v-if="isAdmin">批量导入</button>
+              <button class="dropdown-item" @click="handleNav('/admin/batch-import')" v-if="canAccessUserManagement">用户管理</button>
             </div>
           </div>
         </nav>
@@ -330,14 +330,37 @@ const useCases = [
   }
 ]
 
-// 计算属性：是否可以访问岗位导入
+// 计算属性：是否可以访问岗位导入（管理员也可以访问）
 const canAccessImport = computed(() => {
-  return authStore.userInfo?.department_id && authStore.userInfo?.positions?.length > 0
+  return (authStore.userInfo?.department_id && authStore.userInfo?.positions?.length > 0) || isAdmin.value
 })
 
-// 计算属性：是否是管理员
+// 计算属性：是否是管理员（更宽松的检查）
 const isAdmin = computed(() => {
-  return authStore.userInfo?.roles?.some((r: string) => r === 'admin' || r === '系统管理员')
+  const roles = authStore.userInfo?.roles || []
+  return roles.some((r: any) => {
+    const roleName = typeof r === 'string' ? r : (r?.name || '')
+    return roleName === 'admin' || 
+           roleName === '系统管理员' || 
+           roleName === '租户管理员' ||
+           roleName.toLowerCase().includes('admin') ||
+           roleName.toLowerCase().includes('管理员')
+  })
+})
+
+// 计算属性：是否是学生
+const isStudent = computed(() => {
+  const roles = authStore.userInfo?.roles || []
+  return roles.some((r: any) => {
+    const roleName = typeof r === 'string' ? r : (r?.name || '')
+    return roleName === 'student' || 
+           roleName === '学生'
+  })
+})
+
+// 计算属性：是否可以访问用户管理（学生不能访问）
+const canAccessUserManagement = computed(() => {
+  return !isStudent.value
 })
 
 // 判断分组是否激活

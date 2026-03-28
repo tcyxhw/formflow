@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getSubmissionList } from '@/api/submission'
 import { getFlowDefinitionDetail } from '@/api/flow'
+import { getFormFields } from '@/api/form'
 import { getProcessTimeline } from '@/api/approvals'
 import { useAuthStore } from '@/stores/auth'
 import type { FlowNodeConfig, FlowRouteConfig } from '@/types/flow'
@@ -66,6 +67,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   const flowNodes = ref<FlowDiagramNode[]>([])
   const flowRoutes = ref<FlowDiagramRoute[]>([])
   const flowLoading = ref(false)
+  const fieldLabels = ref<Record<string, string>>({})
 
   // 流程轨迹
   const processTimeline = ref<ProcessTimelineInfo | null>(null)
@@ -127,9 +129,25 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     flowLoading.value = true
     flowNodes.value = []
     flowRoutes.value = []
+    fieldLabels.value = {}
     processTimeline.value = null
 
     try {
+      // 获取表单字段标签映射
+      try {
+        const fieldsRes = await getFormFields(formId)
+        if (fieldsRes.data?.fields) {
+          const labels: Record<string, string> = {}
+          for (const field of fieldsRes.data.fields) {
+            if (field.key && field.name) {
+              labels[field.key] = field.name
+            }
+          }
+          fieldLabels.value = labels
+        }
+      } catch (e) {
+        console.warn('获取表单字段失败，将使用字段ID显示:', e)
+      }
       // 获取流程定义 ID
       let realFlowDefId = flowDefinitionId
 
@@ -305,6 +323,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     flowNodes,
     flowRoutes,
     flowLoading,
+    fieldLabels,
     processTimeline,
     loadMyApprovals,
     loadFlowDiagram,

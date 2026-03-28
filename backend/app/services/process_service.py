@@ -121,6 +121,7 @@ class ProcessService:
             form_version_id=form_version_id,
             submission_id=submission_id,
             flow_definition_id=flow_def.id,
+            initiator_id=initiator_id,
         )
         db.add(process)
         db.flush()
@@ -400,7 +401,16 @@ class ProcessService:
 
         # 从process获取发起人ID（如果未提供）
         if initiator_id is None:
-            initiator_id = process.initiator_id if hasattr(process, 'initiator_id') else None
+            initiator_id = getattr(process, 'initiator_id', None)
+            # 如果 initiator_id 仍为 None，则从 submission 获取
+            if initiator_id is None and process.submission_id:
+                from app.models.form import Submission
+                submission = db.query(Submission).filter(
+                    Submission.id == process.submission_id,
+                    Submission.tenant_id == tenant_id,
+                ).first()
+                if submission:
+                    initiator_id = submission.submitter_user_id
 
         assignee_user_id, assignee_group_id = AssignmentService.select_assignee(
             node, tenant_id, db, form_data=form_data, initiator_id=initiator_id

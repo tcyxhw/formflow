@@ -416,6 +416,23 @@ class FormService:
         return form
 
     @staticmethod
+    def get_form_by_id_any_tenant(
+            form_id: int,
+            db: Session
+    ) -> Optional[Form]:
+        """
+        根据ID查询任意租户下的表单（用于跨租户访问场景）
+
+        Args:
+            form_id: 表单ID
+            db: 数据库会话
+
+        Returns:
+            表单对象，如果不存在则返回None
+        """
+        return db.query(Form).filter(Form.id == form_id).first()
+
+    @staticmethod
     def get_form_detail(
             form_id: int,
             tenant_id: int,

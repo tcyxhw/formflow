@@ -214,7 +214,7 @@
                 <h4 class="section-title">审批流程图</h4>
                 <n-spin :show="flowLoading">
                   <div v-if="flowNodes.length > 0" class="flow-diagram-container">
-                    <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" />
+                    <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
                   </div>
                   <div v-else class="empty-flow">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -310,7 +310,7 @@
               <h4 class="section-title">审批流程图</h4>
               <n-spin :show="flowLoading">
                 <div v-if="flowNodes.length > 0" class="flow-diagram-wrapper">
-                  <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" />
+                  <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
                 </div>
                 <div v-else class="empty-flow">
                   <p>暂无流程配置</p>
@@ -337,7 +337,7 @@ const router = useRouter()
 const message = useMessage()
 const store = useMySubmittedApprovals()
 
-const { approvalList, loading, selectedApproval, stats, flowNodes, flowRoutes, flowLoading } = storeToRefs(store)
+const { approvalList, loading, selectedApproval, stats, flowNodes, flowRoutes, flowLoading, fieldLabels } = storeToRefs(store)
 const { loadMyApprovals, selectApproval, getStateType, getStateLabel } = store
 
 // 抽屉显示状态
