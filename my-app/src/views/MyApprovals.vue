@@ -156,49 +156,8 @@
           </div>
 
           <div class="flow-diagram-container" v-loading="flowLoading">
-            <div v-if="flowNodes.length > 0" class="flow-diagram">
-              <!-- 这里可以集成流程图组件 -->
-              <div class="flow-nodes">
-                <div
-                  v-for="node in flowNodes"
-                  :key="node.id"
-                  class="flow-node"
-                  :class="[`node-${node.type}`, `status-${node.status}`]"
-                >
-                  <div class="node-icon">
-                    <svg v-if="node.type === 'start'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polygon points="10 8 16 12 10 16 10 8"></polygon>
-                    </svg>
-                    <svg v-else-if="node.type === 'approval'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="16" y1="13" x2="8" y2="13"></line>
-                      <line x1="16" y1="17" x2="8" y2="17"></line>
-                    </svg>
-                    <svg v-else-if="node.type === 'end'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="15" y1="9" x2="9" y2="15"></line>
-                      <line x1="9" y1="9" x2="15" y2="15"></line>
-                    </svg>
-                  </div>
-                  <div class="node-info">
-                    <div class="node-name">{{ node.name }}</div>
-                    <div class="node-assignee" v-if="node.assignee_name">
-                      {{ node.assignee_name }}
-                    </div>
-                    <div class="node-due" v-if="node.due_at">
-                      截止: {{ formatDate(node.due_at) }}
-                    </div>
-                  </div>
-                  <div class="node-status-badge">
-                    <span v-if="node.status === 'completed'" class="status-dot completed"></span>
-                    <span v-else-if="node.status === 'processing'" class="status-dot processing"></span>
-                    <span v-else-if="node.status === 'rejected'" class="status-dot rejected"></span>
-                    <span v-else class="status-dot pending"></span>
-                  </div>
-                </div>
-              </div>
+            <div v-if="flowNodes.length > 0" class="flow-diagram-wrapper">
+              <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
             </div>
             <n-empty v-else description="暂无流程图数据" />
           </div>
@@ -271,11 +230,21 @@
         </div>
 
         <!-- 操作区域 -->
-        <div class="action-section" v-if="canEditSubmission">
+        <div class="action-section" v-if="canEditSubmission || isPendingApproval">
           <div class="section-header">
             <h3>操作</h3>
           </div>
           <div class="action-buttons">
+            <!-- 暂存待发状态：显示发起审批按钮 -->
+            <n-button v-if="isPendingApproval" type="primary" @click="handleStartApproval" :loading="startApprovalLoading">
+              <template #icon>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <path d="M22 2L11 13"></path>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </template>
+              发起审批
+            </n-button>
             <n-button type="primary" @click="editSubmission">
               <template #icon>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -323,19 +292,26 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useMySubmittedApprovals } from '@/stores/mySubmittedApprovals'
 import type { MyApprovalItem } from '@/stores/mySubmittedApprovals'
+import FlowDiagram from '@/components/form/FlowDiagram.vue'
+import { startApproval } from '@/api/submission'
+import { useMessage } from 'naive-ui'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const approvalStore = useMySubmittedApprovals()
+const message = useMessage()
 
 // 响应式数据
 const searchKeyword = ref('')
 const selectedApproval = ref<MyApprovalItem | null>(null)
+const startApprovalLoading = ref(false)
 
 // 计算属性
 const loading = computed(() => approvalStore.loading)
 const flowLoading = computed(() => approvalStore.flowLoading)
 const flowNodes = computed(() => approvalStore.flowNodes)
+const flowRoutes = computed(() => approvalStore.flowRoutes)
+const fieldLabels = computed(() => approvalStore.fieldLabels)
 const processTimeline = computed(() => approvalStore.processTimeline)
 
 // 过滤后的审批列表
@@ -347,16 +323,17 @@ const filteredApprovals = computed(() => {
   )
 })
 
-// 是否可以编辑提交（未认领且未处理）
+// 是否可以编辑提交（暂存待发状态）
 const canEditSubmission = computed(() => {
   if (!selectedApproval.value) return false
-  // 检查当前是否有待处理的节点
-  const currentEntry = processTimeline.value?.entries?.find(
-    entry => entry.status === 'open' || entry.status === 'claimed'
-  )
-  // 如果有待处理节点且当前用户是审批人，可以编辑
-  // 这里简化处理，实际应该检查更复杂的逻辑
-  return selectedApproval.value.process_state === 'running'
+  // 暂存待发状态可以编辑
+  return selectedApproval.value.process_state === 'pending_approval'
+})
+
+// 是否是暂存待发状态
+const isPendingApproval = computed(() => {
+  if (!selectedApproval.value) return false
+  return selectedApproval.value.process_state === 'pending_approval'
 })
 
 // 方法
@@ -400,6 +377,25 @@ const viewSubmissionDetail = () => {
   }
 }
 
+// 发起审批
+const handleStartApproval = async () => {
+  if (!selectedApproval.value) return
+  
+  startApprovalLoading.value = true
+  try {
+    await startApproval(selectedApproval.value.id)
+    message.success('审批流程已发起')
+    // 刷新列表
+    await approvalStore.loadMyApprovals()
+    // 更新选中项的状态
+    selectedApproval.value.process_state = 'running'
+  } catch (error: any) {
+    message.error(error?.message || '发起审批失败')
+  } finally {
+    startApprovalLoading.value = false
+  }
+}
+
 const getStateType = (state: string | null, isOverdue?: boolean): 'success' | 'warning' | 'error' | 'info' => {
   return approvalStore.getStateType(state, isOverdue)
 }
@@ -408,27 +404,30 @@ const getStateLabel = (state: string | null, isOverdue?: boolean): string => {
   return approvalStore.getStateLabel(state, isOverdue)
 }
 
-const getTimelineStatusType = (status: string): 'success' | 'warning' | 'error' | 'info' => {
+const getTimelineStatusType = (status: string | null | undefined): 'success' | 'warning' | 'error' | 'info' => {
   switch (status) {
     case 'completed': return 'success'
     case 'claimed':
     case 'open': return 'warning'
+    case 'canceled': return 'error'
     case 'rejected': return 'error'
     default: return 'info'
   }
 }
 
-const getTimelineStatusLabel = (status: string): string => {
+const getTimelineStatusLabel = (status: string | null | undefined): string => {
   switch (status) {
     case 'completed': return '已完成'
+    case 'approved': return '已通过'
     case 'claimed': return '已认领'
     case 'open': return '待处理'
+    case 'canceled': return '已取消'
     case 'rejected': return '已拒绝'
-    default: return '未知'
+    default: return status || '未知'
   }
 }
 
-const getSLALevelType = (level: string): 'success' | 'warning' | 'error' | 'info' => {
+const getSLALevelType = (level: string | null | undefined): 'success' | 'warning' | 'error' | 'info' => {
   switch (level) {
     case 'normal': return 'success'
     case 'warning': return 'warning'
@@ -437,17 +436,17 @@ const getSLALevelType = (level: string): 'success' | 'warning' | 'error' | 'info
   }
 }
 
-const getSLALevelLabel = (level: string): string => {
+const getSLALevelLabel = (level: string | null | undefined): string => {
   switch (level) {
     case 'normal': return '正常'
     case 'warning': return '警告'
     case 'critical': return '紧急'
     case 'unknown': return '未知'
-    default: return level
+    default: return level || '未知'
   }
 }
 
-const formatDate = (dateString: string): string => {
+const formatDate = (dateString: string | null | undefined): string => {
   if (!dateString) return ''
   const date = new Date(dateString)
   return date.toLocaleDateString('zh-CN', {
@@ -457,7 +456,7 @@ const formatDate = (dateString: string): string => {
   })
 }
 
-const formatDateTime = (dateString: string): string => {
+const formatDateTime = (dateString: string | null | undefined): string => {
   if (!dateString) return ''
   const date = new Date(dateString)
   return date.toLocaleString('zh-CN', {
@@ -766,145 +765,17 @@ onMounted(async () => {
 
 /* 流程图 */
 .flow-diagram-container {
-  min-height: 200px;
+  min-height: 300px;
   background: #f8fafc;
   border-radius: 12px;
   padding: 24px;
   border: 1px solid #e2e8f0;
 }
 
-.flow-nodes {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  overflow-x: auto;
-  padding: 8px 0;
-}
-
-.flow-node {
-  flex-shrink: 0;
-  width: 140px;
-  padding: 16px;
-  background: #ffffff;
+.flow-diagram-wrapper {
+  min-height: 300px;
   border-radius: 12px;
-  border: 2px solid #e2e8f0;
-  text-align: center;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.flow-node:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-}
-
-.flow-node.node-start {
-  border-color: #10b981;
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-}
-
-.flow-node.node-approval {
-  border-color: #667eea;
-  background: linear-gradient(135deg, #f0f5ff 0%, #e0e7ff 100%);
-}
-
-.flow-node.node-end {
-  border-color: #8b5cf6;
-  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-}
-
-.flow-node.status-completed {
-  border-color: #10b981;
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-}
-
-.flow-node.status-processing {
-  border-color: #f59e0b;
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-}
-
-.flow-node.status-rejected {
-  border-color: #ef4444;
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-}
-
-.flow-node.status-pending {
-  border-color: #e2e8f0;
-  background: #ffffff;
-}
-
-.node-icon {
-  margin-bottom: 8px;
-}
-
-.node-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1a202c;
-  margin-bottom: 4px;
-}
-
-.node-assignee {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 4px;
-}
-
-.node-due {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.node-status-badge {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.status-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.status-dot.completed {
-  background: #10b981;
-}
-
-.status-dot.processing {
-  background: #f59e0b;
-  animation: pulse 2s infinite;
-}
-
-.status-dot.rejected {
-  background: #ef4444;
-}
-
-.status-dot.pending {
-  background: #e2e8f0;
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+  overflow: hidden;
 }
 
 /* 时间线 */

@@ -46,6 +46,7 @@
           v-else-if="formConfig && canFill"
           :config="formConfig"
           @submit="handleSubmit"
+          @save-as-draft="handleSaveAsDraft"
         />
       </n-spin>
     </n-card>
@@ -273,14 +274,41 @@ const handleSubmit = async (payload: FormSubmissionPayload) => {
     } else {
       await submissionApi.createSubmission({
         form_id: currentFormId.value,
-        data: payload as SubmissionData
+        data: payload as SubmissionData,
+        auto_trigger_workflow: true  // 提交并发起审批
       })
-      message.success('提交成功')
+      message.success('提交成功，审批流程已发起')
     }
     
     router.push('/form/fill-center')
   } catch (error) {
     message.error(resolveErrorMessage(error, editingSubmissionId.value ? '更新失败' : '提交失败'))
+  }
+}
+
+const handleSaveAsDraft = async (payload: FormSubmissionPayload) => {
+  if (!currentFormId.value) {
+    message.error('表单尚未准备完成')
+    return
+  }
+
+  if (!canFill.value) {
+    message.warning('当前账号暂无填写权限')
+    return
+  }
+
+  try {
+    // 暂存待发：创建提交但不触发审批流程
+    await submissionApi.createSubmission({
+      form_id: currentFormId.value,
+      data: payload as SubmissionData,
+      auto_trigger_workflow: false  // 暂存待发，不触发审批
+    })
+    message.success('暂存成功，可在"我的审批"中发起审批')
+    
+    router.push('/form/fill-center')
+  } catch (error) {
+    message.error(resolveErrorMessage(error, '暂存失败'))
   }
 }
 

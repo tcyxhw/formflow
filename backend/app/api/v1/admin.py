@@ -1229,26 +1229,36 @@ def get_manageable_user_ids(
     if admin_roles:
         return None  # 管理员无限制
 
-    # 获取当前用户的部门
+    # 获取当前用户的部门（从UserDepartment表）
     current_user_depts = db.query(UserDepartment).filter(
         UserDepartment.user_id == current_user.id,
         UserDepartment.tenant_id == tenant_id
     ).all()
 
-    if not current_user_depts:
+    dept_ids = [ud.department_id for ud in current_user_depts]
+    
+    # 获取当前用户的岗位部门（从UserDepartmentPost表）
+    current_user_post_depts = db.query(UserDepartmentPost.department_id).filter(
+        UserDepartmentPost.user_id == current_user.id,
+        UserDepartmentPost.tenant_id == tenant_id,
+        UserDepartmentPost.department_id.isnot(None)
+    ).distinct().all()
+    
+    post_dept_ids = [row[0] for row in current_user_post_depts]
+    
+    # 合并所有部门ID（UserDepartment和UserDepartmentPost）
+    all_dept_ids = set(dept_ids + post_dept_ids)
+    
+    if not all_dept_ids:
         # 尝试从 User 表的 department_id 字段获取主属部门
         if current_user.department_id:
-            current_user_depts = db.query(UserDepartment).filter(
-                UserDepartment.user_id == current_user.id,
-                UserDepartment.tenant_id == tenant_id,
-                UserDepartment.department_id == current_user.department_id
-            ).all()
+            all_dept_ids.add(current_user.department_id)
         
         # 如果仍然没有部门记录，只能查看自己
-        if not current_user_depts:
+        if not all_dept_ids:
             return [current_user.id]
-
-    dept_ids = [ud.department_id for ud in current_user_depts]
+    
+    dept_ids = list(all_dept_ids)
 
     # 扩展部门ID列表，包含所有子部门
     dept_ids = get_all_child_department_ids(dept_ids, tenant_id, db)
@@ -1537,7 +1547,8 @@ async def list_users(
         for udp, pos in user_posts:
             if udp.user_id not in post_map:
                 post_map[udp.user_id] = []
-            post_map[udp.user_id].append(pos.name)
+            if pos.name not in post_map[udp.user_id]:
+                post_map[udp.user_id].append(pos.name)
 
         # 构建响应
         items = []

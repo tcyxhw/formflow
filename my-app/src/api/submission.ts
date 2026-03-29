@@ -145,6 +145,16 @@ export const getExportTask = (
   return request.get(`${EXPORT_PATH}/${taskId}`)
 }
 
+/**
+ * 发起审批流程
+ * POST /submissions/{submission_id}/start-approval
+ */
+export const startApproval = (
+  submissionId: number
+): Promise<Response<SubmissionDetail>> => {
+  return request.post(`${BASE_PATH}/${submissionId}/start-approval`)
+}
+
 export default {
   createSubmission,
   updateSubmission,
@@ -158,4 +168,5 @@ export default {
   deleteDraft,
   exportSubmissions,
   getExportTask,
+  startApproval,
 }

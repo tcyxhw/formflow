@@ -286,6 +286,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
    * - running: 进行中 - 审批未到达结束节点且未超时
    * - finished: 已完成 - 到达结束节点
    * - stopped/canceled: 已停止 - 未完成并超时
+   * - pending_approval: 暂存待发 - 未发起审批
    */
   // 获取流程状态类型
   const getStateType = (state: string | null, isOverdue?: boolean): 'success' | 'warning' | 'error' | 'info' => {
@@ -297,6 +298,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
       case 'finished': return 'success'
       case 'stopped':
       case 'canceled': return 'error'
+      case 'pending_approval': return 'warning'  // 暂存待发显示为警告状态
       default: return 'info'
     }
   }
@@ -311,6 +313,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
       case 'finished': return '已完成'
       case 'stopped':
       case 'canceled': return '已停止'
+      case 'pending_approval': return '暂存待发'  // 暂存待发状态
       default: return '进行中'
     }
   }

@@ -494,3 +494,35 @@ async def get_export_task(
     except Exception as e:
         logger.error(f"Get export task error: {e}")
         return error_response("查询失败", 5001)
+
+
+# ========== 审批流程 ==========
+
+@router.post("/{submission_id}/start-approval", summary="发起审批")
+@audit_log(action="start_approval", resource_type="submission", record_before=True, record_after=True)
+async def start_approval(
+        submission_id: int = Path(...),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """手动发起审批流程（用于 pending_approval 状态的提交）"""
+    try:
+        submission = SubmissionService.start_approval(
+            submission_id=submission_id,
+            tenant_id=tenant_id,
+            user_id=current_user.id,
+            db=db
+        )
+
+        return success_response(
+            data=SubmissionResponse.from_orm(submission).dict(),
+            message="审批流程已发起"
+        )
+    except NotFoundError as e:
+        return error_response(str(e), 4041)
+    except BusinessError as e:
+        return error_response(str(e), 4002)
+    except Exception as e:
+        logger.error(f"Start approval error: {e}", exc_info=True)
+        return error_response("发起审批失败", 5001)

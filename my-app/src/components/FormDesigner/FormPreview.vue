@@ -135,7 +135,10 @@
         <n-form-item>
           <n-space>
             <n-button type="primary" @click="handleSubmit">
-              提交
+              提交并发起审批
+            </n-button>
+            <n-button @click="handleSaveAsDraft">
+              暂存待发
             </n-button>
             <n-button @click="handleReset">
               重置
@@ -163,7 +166,10 @@
   }
 
   const props = defineProps<Props>()
-  const emit = defineEmits<{ (e: 'submit', payload: FormSubmissionPayload): void }>()
+  const emit = defineEmits<{
+    (e: 'submit', payload: FormSubmissionPayload): void
+    (e: 'saveAsDraft', payload: FormSubmissionPayload): void
+  }>()
 
   const message = useMessage()
   const authStore = useAuthStore()
@@ -760,6 +766,23 @@
       emit('submit', submitData)
     } catch (error) {
       message.error(resolveErrorMessage(error, '请检查表单填写'))
+    }
+  }
+
+  const handleSaveAsDraft = async () => {
+    try {
+      // 暂存待发不需要校验必填字段
+      const submitData: FormValues = {}
+      Object.keys(formData).forEach(key => {
+        const value = formData[key]
+        if (value !== null && value !== undefined) {
+          submitData[key] = value
+        }
+      })
+      
+      emit('saveAsDraft', submitData)
+    } catch (error) {
+      message.error(resolveErrorMessage(error, '暂存失败'))
     }
   }
 

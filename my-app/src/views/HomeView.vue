@@ -645,9 +645,14 @@ const initSpotlight = () => {
 }
 
 .brand-name {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
   color: #ffffff;
+  letter-spacing: 0.5px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.15),
+    0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .nav-menu {
@@ -658,20 +663,30 @@ const initSpotlight = () => {
 }
 
 .nav-item {
-  padding: 10px 16px;
+  padding: 10px 18px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
-  font-size: 16px;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: all 0.25s ease;
   white-space: nowrap;
+  letter-spacing: 0.3px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .nav-item:hover {
   color: #ff4500;
+  background: rgba(255, 69, 0, 0.08);
+  text-shadow:
+    0 1px 0 rgba(255, 69, 0, 0.2),
+    0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 2px 8px rgba(255, 69, 0, 0.15);
 }
 
 .nav-badge {
@@ -694,11 +709,16 @@ const initSpotlight = () => {
   color: #ffffff;
   background: transparent;
   border: none;
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: 700;
+  font-size: 17px;
   padding: 10px 18px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
+  letter-spacing: 0.3px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .btn-signin:hover {
@@ -744,27 +764,37 @@ const initSpotlight = () => {
 
 .user-name {
   color: #ffffff;
-  font-weight: 500;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 15px;
   max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 -1px 0 rgba(0, 0, 0, 0.3);
 }
 
 .btn-get-started {
   background: #ffffff;
   color: #0b0d12;
   border: none;
-  font-weight: 600;
-  font-size: 16px;
-  padding: 10px 20px;
-  border-radius: 6px;
+  font-weight: 700;
+  font-size: 17px;
+  padding: 10px 22px;
+  border-radius: 8px;
   cursor: pointer;
+  letter-spacing: 0.3px;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .btn-get-started:hover {
   background: #f0f0f0;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* 下拉菜单 */
@@ -810,19 +840,29 @@ const initSpotlight = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 10px 18px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
-  font-size: 16px;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: all 0.25s ease;
+  letter-spacing: 0.3px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .nav-item:hover {
   color: #ff4500;
+  background: rgba(255, 69, 0, 0.08);
+  text-shadow:
+    0 1px 0 rgba(255, 69, 0, 0.2),
+    0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 2px 8px rgba(255, 69, 0, 0.15);
 }
 
 .nav-badge {
@@ -1050,9 +1090,13 @@ const initSpotlight = () => {
 
 .brand-name {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
   color: #ffffff;
-  letter-spacing: -0.5px;
+  letter-spacing: 0.5px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.15),
+    0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .hero-topnav {
@@ -1091,10 +1135,14 @@ const initSpotlight = () => {
 }
 
 .brand-name {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
   color: #ffffff;
-  letter-spacing: -0.3px;
+  letter-spacing: 0.5px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.15),
+    0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .hero-topnav {
@@ -1105,20 +1153,30 @@ const initSpotlight = () => {
 }
 
 .nav-item {
-  padding: 10px 16px;
+  padding: 10px 18px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
-  font-size: 16px;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: all 0.25s ease;
   white-space: nowrap;
+  letter-spacing: 0.3px;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .nav-item:hover {
   color: #ff4500;
+  background: rgba(255, 69, 0, 0.08);
+  text-shadow:
+    0 1px 0 rgba(255, 69, 0, 0.2),
+    0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 2px 8px rgba(255, 69, 0, 0.15);
 }
 
 .nav-badge {

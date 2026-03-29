@@ -63,6 +63,7 @@ export interface CreateSubmissionRequest {
   data: SubmissionData
   duration?: number
   source?: string
+  auto_trigger_workflow?: boolean  // 是否自动触发审批流程，默认为 true
 }
 
 // 更新提交请求

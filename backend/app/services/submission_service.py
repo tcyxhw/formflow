@@ -104,12 +104,14 @@ class SubmissionStatus(str, Enum):
     """
     提交状态枚举
 
-    :cvar SUBMITTED: 已提交
+    :cvar SUBMITTED: 已提交（已发起审批）
+    :cvar PENDING_APPROVAL: 暂存待发（未发起审批）
     :cvar APPROVED: 已批准
     :cvar REJECTED: 已拒绝
     :cvar DELETED: 已删除
     """
     SUBMITTED = "submitted"
+    PENDING_APPROVAL = "pending_approval"
     APPROVED = "approved"
     REJECTED = "rejected"
     DELETED = "deleted"
@@ -137,7 +139,8 @@ class SubmissionService:
             user_id: Optional[int],
             ip_address: str,
             device_info: dict,
-            db: Session
+            db: Session,
+            auto_trigger_workflow: bool = True,
     ) -> Submission:
         """
         创建新的表单提交记录
@@ -153,7 +156,7 @@ class SubmissionService:
         8. 保存提交记录到数据库
         9. 绑定上传的附件
         10. 删除对应的草稿记录
-        11. 触发流程
+        11. 触发流程（如果 auto_trigger_workflow=True）
 
         【验证规则】
         - 表单必须是已发布状态
@@ -167,6 +170,7 @@ class SubmissionService:
         :param ip_address: 提交来源IP地址
         :param device_info: 设备信息字典（包含 user_agent, platform 等）
         :param db: 数据库会话对象
+        :param auto_trigger_workflow: 是否自动触发审批流程，默认为 True
         :return: 创建成功的 Submission 对象
         :raises BusinessError: 表单未发布、已过期、配置不完整时抛出
         :raises ValidationError: 数据验证失败时抛出
@@ -184,7 +188,8 @@ class SubmissionService:
         ...     user_id=100,
         ...     ip_address="127.0.0.1",
         ...     device_info={"user_agent": "Chrome/120.0"},
-        ...     db=db
+        ...     db=db,
+        ...     auto_trigger_workflow=True,
         ... )
         """
         logger.info(
@@ -287,21 +292,27 @@ class SubmissionService:
                 logger.warning(f"删除草稿失败: {e}")
                 # 草稿删除失败不影响主流程
 
-        # 11. 触发流程
-        SubmissionService._trigger_workflow(
-            form=form,
-            form_version=current_version,
-            submission=submission,
-            tenant_id=tenant_id,
-            db=db,
-        )
+        # 11. 触发流程（根据 auto_trigger_workflow 参数决定）
+        if auto_trigger_workflow:
+            submission.status = SubmissionStatus.SUBMITTED.value
+            SubmissionService._trigger_workflow(
+                form=form,
+                form_version=current_version,
+                submission=submission,
+                tenant_id=tenant_id,
+                db=db,
+            )
+            logger.debug(f"已自动触发审批流程: submission_id={submission.id}")
+        else:
+            submission.status = SubmissionStatus.PENDING_APPROVAL.value
+            logger.debug(f"暂存待发，未触发审批流程: submission_id={submission.id}")
 
         db.commit()
         db.refresh(submission)
 
         logger.info(
             f"提交创建成功: submission_id={submission.id}, form_id={request.form_id}, "
-            f"user_id={user_id}, duration={request.duration}s"
+            f"user_id={user_id}, duration={request.duration}s, status={submission.status}"
         )
         return submission
 
@@ -349,6 +360,65 @@ class SubmissionService:
                 form.id,
                 exc,
             )
+
+    @staticmethod
+    def start_approval(
+            submission_id: int,
+            tenant_id: int,
+            user_id: int,
+            db: Session,
+    ) -> Submission:
+        """手动发起审批流程（用于 pending_approval 状态的提交）。
+
+        :param submission_id: 提交记录ID
+        :param tenant_id: 租户ID
+        :param user_id: 当前操作用户ID
+        :param db: 数据库会话
+        :return: 更新后的 Submission 对象
+        :raises NotFoundError: 提交记录不存在
+        :raises AuthorizationError: 无权限操作
+        :raises BusinessError: 状态不允许发起审批
+        """
+        from app.services.process_service import ProcessService
+
+        logger.info(f"手动发起审批: submission_id={submission_id}, user_id={user_id}")
+
+        # 1. 查询提交记录
+        submission = SubmissionService.get_submission_by_id(submission_id, tenant_id, db)
+
+        # 2. 检查权限（只有提交者本人可以发起审批）
+        if submission.submitter_user_id != user_id:
+            raise AuthorizationError("只有提交者本人可以发起审批")
+
+        # 3. 检查状态
+        if submission.status != SubmissionStatus.PENDING_APPROVAL.value:
+            raise BusinessError(f"当前状态不允许发起审批: {submission.status}")
+
+        # 4. 获取表单和版本信息
+        form = FormService.get_form_by_id(submission.form_id, tenant_id, db)
+        form_version = db.query(FormVersion).filter(
+            FormVersion.id == submission.form_version_id
+        ).first()
+
+        if not form_version:
+            raise BusinessError("表单版本不存在")
+
+        # 5. 更新状态并触发流程
+        submission.status = SubmissionStatus.SUBMITTED.value
+
+        SubmissionService._trigger_workflow(
+            form=form,
+            form_version=form_version,
+            submission=submission,
+            tenant_id=tenant_id,
+            db=db,
+        )
+
+        db.commit()
+        db.refresh(submission)
+
+        logger.info(f"审批流程已发起: submission_id={submission_id}")
+        return submission
 
     @staticmethod
     def update_submission(
