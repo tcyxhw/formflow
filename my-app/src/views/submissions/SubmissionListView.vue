@@ -213,6 +213,7 @@ const exportDialog = reactive({
 const statusOptions = [
   { label: '全部', value: '' },
   { label: '已提交', value: 'submitted' },
+  { label: '暂存待发', value: 'pending_approval' },
   { label: '草稿', value: 'draft' },
   { label: '已通过', value: 'approved' },
   { label: '已拒绝', value: 'rejected' },
@@ -224,6 +225,8 @@ const statusLabel = (status: string) => {
       return '已通过'
     case 'rejected':
       return '已拒绝'
+    case 'pending_approval':
+      return '暂存待发'
     case 'draft':
       return '草稿'
     default:
@@ -231,12 +234,14 @@ const statusLabel = (status: string) => {
   }
 }
 
-const statusTagType = (status: string): 'success' | 'error' | 'info' | 'default' => {
+const statusTagType = (status: string): 'success' | 'error' | 'warning' | 'info' | 'default' => {
   switch (status) {
     case 'approved':
       return 'success'
     case 'rejected':
       return 'error'
+    case 'pending_approval':
+      return 'warning'
     case 'draft':
       return 'info'
     default:

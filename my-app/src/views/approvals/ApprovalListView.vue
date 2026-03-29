@@ -309,6 +309,7 @@ import type { SlaLevel } from '@/types/approval'
 import type { AttachmentInfo } from '@/types/attachment'
 
 import {
+  cancelTask,
   claimTask,
   getTaskSlaSummary,
   listTasks,
@@ -1039,6 +1040,19 @@ async function handleRelease(row: TaskResponse) {
   }
 }
 
+// 撤回任务
+async function handleCancel(row: TaskResponse) {
+  try {
+    await cancelTask(row.id)
+    message.success('撤回成功')
+    loadTasks()
+    loadSlaSummary()
+  } catch (error) {
+    console.error('撤回失败:', error)
+    message.error('撤回失败')
+  }
+}
+
 // 打开审批操作弹窗
 function openActionModal(task: TaskResponse, intent: 'approve' | 'reject') {
   actionTask.value = task
@@ -1201,9 +1215,12 @@ const columns: DataTableColumns<TaskResponse> = [
       )
       
       if (row.status === 'open') {
-        // 待认领状态：显示认领按钮
+        // 待认领状态：显示认领按钮和撤回按钮
         buttons.push(
           h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleClaim(row) }, { default: () => '认领' })
+        )
+        buttons.push(
+          h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleCancel(row) }, { default: () => '撤回' })
         )
       } else if (row.status === 'claimed') {
         // 已认领状态：显示审批操作按钮和释放按钮

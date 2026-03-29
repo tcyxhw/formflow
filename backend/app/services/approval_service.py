@@ -342,6 +342,71 @@ class TaskService:
         return TaskService._enrich_task(task, db)
 
     @staticmethod
+    def cancel_task(
+        task_id: int,
+        tenant_id: int,
+        current_user: User,
+        db: Session,
+    ) -> TaskResponse:
+        """撤回任务（取消审批流程）。
+
+        撤回条件：
+        - 任务状态为 open（未被认领）
+        - 且未被审批节点审批过
+
+        撤回后操作：
+        - 将任务状态标记为 canceled
+        - 将流程实例状态标记为 canceled
+        - 将关联的提交记录状态回退为 pending_approval
+
+        :param task_id: 任务 ID
+        :param tenant_id: 租户 ID
+        :param current_user: 当前用户
+        :param db: 数据库会话
+        :return: 取消后的任务信息
+
+        Time: O(1), Space: O(1)
+        """
+        from app.services.submission_service import SubmissionStatus
+
+        task = TaskService._get_task(task_id, tenant_id, db)
+
+        if task.status != TaskStatus.OPEN.value:
+            raise BusinessError("只有待认领状态的任务才能撤回")
+
+        task.status = TaskStatus.CANCELED.value
+
+        process_instance = db.query(ProcessInstance).filter(
+            ProcessInstance.id == task.process_instance_id,
+            ProcessInstance.tenant_id == tenant_id
+        ).first()
+
+        if process_instance:
+            process_instance.state = "canceled"
+
+            submission = db.query(Submission).filter(
+                Submission.id == process_instance.submission_id,
+                Submission.tenant_id == tenant_id
+            ).first()
+
+            if submission:
+                submission.status = SubmissionStatus.PENDING_APPROVAL.value
+
+        TaskService._create_action_log(
+            task_id=task.id,
+            tenant_id=tenant_id,
+            actor_user_id=current_user.id,
+            action="cancel",
+            detail={"message": "任务已撤回"},
+            db=db,
+        )
+
+        db.commit()
+        db.refresh(task)
+
+        return TaskService._enrich_task(task, db)
+
+    @staticmethod
     def perform_task_action(
         task_id: int,
         tenant_id: int,

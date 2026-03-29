@@ -488,6 +488,21 @@ class SubmissionService:
                 logger.warning(f"提交记录关联的任务已被认领: submission_id={submission_id}, task_id={claimed_task.id}")
                 raise BusinessError("该提交记录已被审批人认领，不允许再编辑")
 
+            # 检查任务是否已完成审批（已通过或已拒绝）
+            completed_task = db.query(Task).filter(
+                Task.process_instance_id == process_instance.id,
+                Task.status == "completed"
+            ).first()
+
+            if completed_task:
+                logger.warning(f"提交记录关联的任务已完成审批: submission_id={submission_id}, task_id={completed_task.id}")
+                raise BusinessError("该提交记录已进入审批流程且已完成，不允许再编辑")
+
+        # 检查提交状态是否为已批准或已拒绝（冗余检查，防止直接编辑已审批记录）
+        if submission.status in [SubmissionStatus.APPROVED.value, SubmissionStatus.REJECTED.value]:
+            logger.warning(f"提交记录状态为已审批: submission_id={submission_id}, status={submission.status}")
+            raise BusinessError("该提交记录已审批完成，不允许再编辑")
+
         # 4. 获取表单和版本
         form = FormService.get_form_by_id(submission.form_id, tenant_id, db)
         version = db.query(FormVersion).filter(

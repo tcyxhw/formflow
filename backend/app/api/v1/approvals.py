@@ -159,6 +159,35 @@ async def release_task(
     return success_response(data=task.model_dump(), message="任务已释放")
 
 
+@router.post("/{task_id}/cancel", summary="撤回任务")
+@audit_log(action="cancel_task", resource_type="task")
+async def cancel_task(
+    task_id: int = Path(..., ge=1, description="任务 ID"),
+    request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db),
+):
+    """撤回任务（取消审批流程）。
+
+    撤回条件：任务状态为 open（未被认领）且未被审批节点审批过
+    撤回后：任务标记为取消，流程实例取消，提交记录状态回退为待发起审批
+
+    :param task_id: 任务ID
+    :param request: HTTP请求对象（用于审计日志）
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
+    :return: 取消后的任务数据
+
+    Time: O(1), Space: O(1)
+    """
+
+    task = TaskService.cancel_task(task_id, tenant_id, current_user, db)
+    return success_response(data=task.model_dump(), message="任务已撤回")
+
+
 @router.post("/{task_id}/actions", summary="执行审批动作")
 @audit_log(action="perform_task_action", resource_type="task")
 async def perform_task_action(

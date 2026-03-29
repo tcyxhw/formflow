@@ -131,7 +131,16 @@
           "mypy*": "allow",
           "npm run lint*": "allow",
           "npm run type-check*": "allow",
-          "npm run build*": "allow"
+          "npm run build*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git fetch*": "allow",
+          "cd my-app && npm run lint*": "allow",
+          "cd my-app && npm run type-check*": "allow",
+          "cd my-app && npm run build*": "allow",
+          "cd backend && pytest*": "allow",
+          "cd backend && ruff check*": "allow",
+          "cd backend && mypy*": "allow"
         },
         "webfetch": "deny"
       }
@@ -169,7 +178,17 @@
           "mypy*": "allow",
           "npm run lint*": "allow",
           "npm run type-check*": "allow",
-          "npm run build*": "allow"
+          "npm run build*": "allow",
+          "python3 scripts/ops_report.py*": "allow",
+          "python3 scripts/doc_integrity_check.py*": "allow",
+          "python3 scripts/hot_path_audit.py*": "allow",
+          "python3 scripts/context_surface_report.py*": "allow",
+          "cd my-app && npm run lint*": "allow",
+          "cd my-app && npm run type-check*": "allow",
+          "cd my-app && npm run build*": "allow",
+          "cd backend && pytest*": "allow",
+          "cd backend && ruff check*": "allow",
+          "cd backend && mypy*": "allow"
         },
         "webfetch": "deny"
       }
@@ -197,7 +216,12 @@
           "python3 scripts/evidence_context.py*": "allow",
           "pytest*": "allow",
           "ruff check*": "allow",
-          "mypy*": "allow"
+          "mypy*": "allow",
+          "git status*": "allow",
+          "git fetch*": "allow",
+          "cd backend && pytest*": "allow",
+          "cd backend && ruff check*": "allow",
+          "cd backend && mypy*": "allow"
         },
         "webfetch": "deny"
       }
@@ -225,7 +249,12 @@
           "python3 scripts/evidence_context.py*": "allow",
           "npm run lint*": "allow",
           "npm run type-check*": "allow",
-          "npm run build*": "allow"
+          "npm run build*": "allow",
+          "git status*": "allow",
+          "git fetch*": "allow",
+          "cd my-app && npm run lint*": "allow",
+          "cd my-app && npm run type-check*": "allow",
+          "cd my-app && npm run build*": "allow"
         },
         "webfetch": "deny"
       }
@@ -250,7 +279,9 @@
           "head *": "allow",
           "tail *": "allow",
           "ls *": "allow",
-          "python3 scripts/evidence_context.py*": "allow"
+          "python3 scripts/evidence_context.py*": "allow",
+          "git status*": "allow",
+          "git fetch*": "allow"
         },
         "webfetch": "deny"
       }
@@ -276,7 +307,10 @@
           "tail *": "allow",
           "ls *": "allow",
           "python3 scripts/evidence_context.py*": "allow",
-          "pytest*": "allow"
+          "pytest*": "allow",
+          "git status*": "allow",
+          "git fetch*": "allow",
+          "cd backend && pytest*": "allow"
         },
         "webfetch": "deny"
       }
@@ -331,7 +365,13 @@
           "python3 scripts/doc_integrity_check.py*": "allow",
           "python3 scripts/evidence_context.py*": "allow",
           "python3 scripts/hot_path_audit.py*": "allow",
-          "python3 scripts/context_surface_report.py*": "allow"
+          "python3 scripts/context_surface_report.py*": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git fetch*": "allow",
+          "python3 scripts/render_review_evidence.py*": "allow"
         },
         "webfetch": "deny"
       }

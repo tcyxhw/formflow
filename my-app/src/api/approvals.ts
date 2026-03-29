@@ -87,3 +87,10 @@ export const getProcessTimeline = (
 ): Promise<Response<ProcessTimelineResponse>> => {
   return request.get(`${APPROVAL_BASE_PATH}/processes/${processInstanceId}/timeline`)
 }
+
+/**
+ * 撤回任务（取消审批流程）
+ */
+export const cancelTask = (taskId: number): Promise<Response<TaskResponse>> => {
+  return request.post(`${APPROVAL_BASE_PATH}/${taskId}/cancel`)
+}

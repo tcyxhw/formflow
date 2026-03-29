@@ -537,6 +537,7 @@ const formatDateTime = (dateStr: string): string => {
 const getStatusType = (status: string) => {
   const typeMap: Record<string, any> = {
     'submitted': 'info',
+    'pending_approval': 'warning',
     'draft': 'default',
     'approved': 'success',
     'rejected': 'error'
@@ -550,6 +551,7 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string): string => {
   const textMap: Record<string, string> = {
     'submitted': '已提交',
+    'pending_approval': '暂存待发',
     'draft': '草稿',
     'approved': '已通过',
     'rejected': '已拒绝'
