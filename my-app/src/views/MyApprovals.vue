@@ -163,6 +163,76 @@
           </div>
         </div>
 
+        <!-- 表单数据展示 -->
+        <div class="form-data-section">
+          <div class="section-header">
+            <h3>表单数据</h3>
+          </div>
+
+          <div class="form-data-container" v-loading="loadingSubmissionDetail">
+            <div v-if="displayFields.length > 0" class="form-fields">
+              <div
+                v-for="(item, index) in displayFields"
+                :key="item.key"
+                class="form-field-item"
+                :class="{ 'field-alt': index % 2 === 1 }"
+              >
+                <div class="field-label">{{ item.label }}</div>
+                <div class="field-value">
+                  <!-- 附件/图片字段 -->
+                  <template v-if="item.fieldType === 'upload' || item.fieldType === 'image'">
+                    <template v-if="item.attachments && item.attachments.length > 0">
+                      <div class="attachment-list">
+                        <div
+                          v-for="file in item.attachments"
+                          :key="file.id"
+                          class="attachment-item"
+                        >
+                          <template v-if="isImage(file.content_type)">
+                            <div class="image-preview">
+                              <img
+                                :src="file.download_url"
+                                :alt="file.file_name"
+                                class="preview-image"
+                              />
+                              <n-a :href="file.download_url" target="_blank">
+                                <n-button text type="primary" size="tiny">
+                                  下载
+                                </n-button>
+                              </n-a>
+                            </div>
+                          </template>
+                          <template v-else>
+                            <n-a :href="file.download_url" target="_blank">
+                              <n-button text type="primary" size="small">
+                                {{ file.file_name }}
+                              </n-button>
+                            </n-a>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                    <span v-else class="empty-value">未上传</span>
+                  </template>
+                  <!-- 日期范围字段 -->
+                  <template v-else-if="item.fieldType === 'date-range'">
+                    {{ formatDateRange(item.value) }}
+                  </template>
+                  <!-- 日期字段 -->
+                  <template v-else-if="item.fieldType === 'date'">
+                    {{ formatDateTimeValue(item.value) }}
+                  </template>
+                  <!-- 其他字段 -->
+                  <template v-else>
+                    {{ formatFieldValue(item.value, item.options) }}
+                  </template>
+                </div>
+              </div>
+            </div>
+            <n-empty v-else-if="!loadingSubmissionDetail" description="暂无表单数据" />
+          </div>
+        </div>
+
         <!-- 流程时间线 -->
         <div class="timeline-section">
           <div class="section-header">
@@ -293,8 +363,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useMySubmittedApprovals } from '@/stores/mySubmittedApprovals'
 import type { MyApprovalItem } from '@/stores/mySubmittedApprovals'
 import FlowDiagram from '@/components/form/FlowDiagram.vue'
-import { startApproval } from '@/api/submission'
-import { useMessage } from 'naive-ui'
+import { startApproval, getSubmissionDetail } from '@/api/submission'
+import { useMessage, NA } from 'naive-ui'
+import type { SubmissionDetail } from '@/types/submission'
+import type { AttachmentInfo } from '@/types/attachment'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -305,6 +377,10 @@ const message = useMessage()
 const searchKeyword = ref('')
 const selectedApproval = ref<MyApprovalItem | null>(null)
 const startApprovalLoading = ref(false)
+
+// 提交详情数据（用于表单数据展示）
+const submissionDetail = ref<SubmissionDetail | null>(null)
+const loadingSubmissionDetail = ref(false)
 
 // 计算属性
 const loading = computed(() => approvalStore.loading)
@@ -468,10 +544,179 @@ const formatDateTime = (dateString: string | null | undefined): string => {
   })
 }
 
+// 加载提交详情（用于表单数据展示）
+const loadSubmissionDetail = async (submissionId: number) => {
+  loadingSubmissionDetail.value = true
+  try {
+    const res = await getSubmissionDetail(submissionId)
+    if (res.code === 200 && res.data) {
+      submissionDetail.value = res.data
+    } else {
+      submissionDetail.value = null
+      message.warning('未找到提交详情')
+    }
+  } catch (error) {
+    console.error('加载提交详情失败:', error)
+    submissionDetail.value = null
+    message.error('加载表单数据失败，请稍后重试')
+  } finally {
+    loadingSubmissionDetail.value = false
+  }
+}
+
+// 表单字段展示数据
+interface DisplayField {
+  key: string
+  label: string
+  value: unknown
+  fieldType?: string
+  options?: Array<{ label: string; value: unknown }>
+  attachments?: AttachmentInfo[]
+}
+
+const attachmentMap = computed(() => {
+  const map = new Map<number, AttachmentInfo>()
+  const attachments = submissionDetail.value?.attachments ?? []
+  attachments.forEach((item) => {
+    map.set(item.id, item)
+  })
+  return map
+})
+
+const displayFields = computed<DisplayField[]>(() => {
+  if (!submissionDetail.value) return []
+  const snapshot = submissionDetail.value.snapshot_json || {}
+  const labels = snapshot.field_labels || {}
+  const types = snapshot.field_types || {}
+  const options = snapshot.field_options || {}
+  const raw = submissionDetail.value.data_jsonb || {}
+
+  return Object.entries(raw).map(([key, value]) => {
+    const fieldType = types[key]
+    const fieldOptions = options[key]
+    const attachmentValue = resolveAttachmentValue(value, fieldType)
+
+    return {
+      key,
+      label: labels[key] || key,
+      value,
+      fieldType,
+      options: fieldOptions,
+      attachments: attachmentValue || undefined,
+    }
+  })
+})
+
+const resolveAttachmentValue = (value: unknown, fieldType?: string): AttachmentInfo[] | null => {
+  if (!fieldType || !['upload', 'image'].includes(fieldType)) {
+    return null
+  }
+  if (!Array.isArray(value)) {
+    return null
+  }
+  const files = value
+    .map((id) => (typeof id === 'number' ? attachmentMap.value.get(id) : null))
+    .filter((item): item is AttachmentInfo => Boolean(item))
+  return files.length ? files : null
+}
+
+const formatFieldValue = (value: unknown, options?: Array<{ label: string; value: unknown }>): string => {
+  if (value == null) return '-'
+  if (options && options.length > 0) {
+    if (Array.isArray(value)) {
+      const labels = value.map(v => {
+        const option = options.find(opt => opt.value === v)
+        return option?.label || String(v)
+      })
+      return labels.join('、')
+    } else {
+      const option = options.find(opt => opt.value === value)
+      return option?.label || String(value)
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join('、')
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+  return String(value)
+}
+
+const formatDateRange = (value: unknown): string => {
+  if (!value) return '-'
+  if (Array.isArray(value) && value.length === 2) {
+    const [start, end] = value
+    return `${formatDateOnly(start)} - ${formatDateOnly(end)}`
+  }
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>
+    if ('start' in obj && 'end' in obj) {
+      return `${formatDateOnly(obj.start)} - ${formatDateOnly(obj.end)}`
+    }
+  }
+  return String(value)
+}
+
+const formatDateOnly = (value: unknown): string => {
+  if (!value) return '-'
+  let date: Date
+  if (typeof value === 'number') {
+    date = new Date(value)
+  } else if (typeof value === 'string') {
+    date = new Date(value)
+  } else {
+    return String(value)
+  }
+  if (isNaN(date.getTime())) {
+    return String(value)
+  }
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const formatDateTimeValue = (value: unknown): string => {
+  if (!value) return '-'
+  if (typeof value === 'number') {
+    const date = new Date(value)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+  if (typeof value === 'string') {
+    const date = new Date(value)
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    }
+  }
+  return String(value)
+}
+
+const isImage = (contentType?: string): boolean => {
+  if (!contentType) return false
+  return contentType.startsWith('image/')
+}
+
 // 监听选择变化
 watch(selectedApproval, (newVal) => {
   if (newVal) {
     refreshFlowData()
+    // 加载提交详情用于表单数据展示
+    loadSubmissionDetail(newVal.id)
+  } else {
+    submissionDetail.value = null
   }
 })
 
@@ -743,6 +988,7 @@ onMounted(async () => {
 
 /* 各个部分 */
 .flow-diagram-section,
+.form-data-section,
 .timeline-section,
 .action-section {
   padding: 24px;
@@ -892,6 +1138,82 @@ onMounted(async () => {
   font-size: 14px;
   color: #1a202c;
   line-height: 1.5;
+}
+
+/* 表单数据展示 */
+.form-data-container {
+  min-height: 150px;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.form-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-field-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  transition: background-color 0.2s;
+}
+
+.form-field-item:last-child {
+  border-bottom: none;
+}
+
+.form-field-item:hover {
+  background-color: #f1f5f9;
+}
+
+.form-field-item.field-alt {
+  background-color: #fafbfc;
+}
+
+.form-field-item .field-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.form-field-item .field-value {
+  font-size: 14px;
+  color: #1a202c;
+  word-break: break-word;
+}
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attachment-item {
+  padding: 8px;
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.image-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-image {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.empty-value {
+  color: #94a3b8;
+  font-style: italic;
 }
 
 /* 操作区域 */

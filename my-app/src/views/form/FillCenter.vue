@@ -260,6 +260,12 @@
         </div>
       </div>
     </main>
+
+    <!-- 提交详情弹窗 -->
+    <SubmissionDetailModal
+      v-model:show="showSubmissionModal"
+      :submission-id="selectedSubmissionId"
+    />
   </div>
 </template>
 
@@ -272,9 +278,14 @@ import { getFillableForms } from '@/api/workspace'
 import { getSubmissionList } from '@/api/submission'
 import type { FillableFormItem } from '@/types/workspace'
 import type { SubmissionListItem } from '@/types/submission'
+import SubmissionDetailModal from '@/components/submission/SubmissionDetailModal.vue'
 
 const router = useRouter()
 const message = useMessage()
+
+// 提交详情弹窗状态
+const showSubmissionModal = ref(false)
+const selectedSubmissionId = ref<number | undefined>(undefined)
 
 // 可填写表单列表
 const fillableForms = ref<FillableFormItem[]>([])
@@ -472,10 +483,11 @@ const handleEditSubmission = (submission: SubmissionListItem) => {
 }
 
 /**
- * 查看提交详情
+ * 查看提交详情（弹窗方式）
  */
 const handleViewSubmission = (submissionId: number) => {
-  router.push(`/submissions/${submissionId}`)
+  selectedSubmissionId.value = submissionId
+  showSubmissionModal.value = true
 }
 
 /**
