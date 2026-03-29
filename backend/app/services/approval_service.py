@@ -374,23 +374,27 @@ class TaskService:
         if task.status != TaskStatus.OPEN.value:
             raise BusinessError("只有待认领状态的任务才能撤回")
 
-        task.status = TaskStatus.CANCELED.value
-
         process_instance = db.query(ProcessInstance).filter(
             ProcessInstance.id == task.process_instance_id,
             ProcessInstance.tenant_id == tenant_id
         ).first()
 
-        if process_instance:
-            process_instance.state = "canceled"
+        if not process_instance:
+            raise BusinessError("流程实例不存在")
 
-            submission = db.query(Submission).filter(
-                Submission.id == process_instance.submission_id,
-                Submission.tenant_id == tenant_id
-            ).first()
+        if process_instance.initiator_id != current_user.id:
+            raise AuthorizationError("只有发起人才能撤回任务")
 
-            if submission:
-                submission.status = SubmissionStatus.PENDING_APPROVAL.value
+        task.status = TaskStatus.CANCELED.value
+        process_instance.state = "canceled"
+
+        submission = db.query(Submission).filter(
+            Submission.id == process_instance.submission_id,
+            Submission.tenant_id == tenant_id
+        ).first()
+
+        if submission:
+            submission.status = SubmissionStatus.PENDING_APPROVAL.value
 
         TaskService._create_action_log(
             task_id=task.id,

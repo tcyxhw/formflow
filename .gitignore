@@ -4,6 +4,14 @@ backend/__pycache__/
 backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.ruff_cache/
+backend/venv/
+
+# Logs
+backend/logs/
+*.log
+
+# Backup
+*.backup
 
 # Node / Vue
 my-app/node_modules/
