@@ -1027,6 +1027,10 @@ onMounted(() => {
   background: #94a3b8;
 }
 
+.status-bar.pending_approval {
+  background: #f59e0b;
+}
+
 /* 卡片内容 */
 .card-content {
   flex: 1;
@@ -1109,6 +1113,11 @@ onMounted(() => {
   color: #64748b;
 }
 
+.status-badge.pending_approval {
+  background: #fef3c7;
+  color: #d97706;
+}
+
 .status-dot {
   width: 6px;
   height: 6px;
@@ -1126,6 +1135,10 @@ onMounted(() => {
 
 .status-badge.rejected .status-dot {
   background: #ef4444;
+}
+
+.status-badge.pending_approval .status-dot {
+  background: #f59e0b;
 }
 
 .status-badge.draft .status-dot {
@@ -1655,6 +1668,10 @@ onMounted(() => {
 
 .submission-list-item.rejected {
   border-left: 4px solid #ef4444;
+}
+
+.submission-list-item.pending_approval {
+  border-left: 4px solid #f59e0b;
 }
 
 .submission-item-header {

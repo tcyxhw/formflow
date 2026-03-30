@@ -1,16 +1,16 @@
 <template>
   <div class="form-renderer">
-    <FormPreview :config="config" @submit="handleSubmit" @save-as-draft="handleSaveAsDraft" />
+    <FormPreview :config="config" :edit-mode="editMode" @submit="handleSubmit" @save-as-draft="handleSaveAsDraft" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineEmits } from 'vue'
 import FormPreview from '@/components/FormDesigner/FormPreview.vue'
 import type { FormConfig, FormSubmissionPayload } from '@/types/form'
 
 interface Props {
   config: FormConfig
+  editMode?: boolean
 }
 
 defineProps<Props>()

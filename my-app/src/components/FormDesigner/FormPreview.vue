@@ -134,12 +134,19 @@
         
         <n-form-item>
           <n-space>
-            <n-button type="primary" @click="handleSubmit">
-              提交并发起审批
-            </n-button>
-            <n-button @click="handleSaveAsDraft">
-              暂存待发
-            </n-button>
+            <template v-if="editMode">
+              <n-button type="primary" @click="handleSubmit">
+                保存
+              </n-button>
+            </template>
+            <template v-else>
+              <n-button type="primary" @click="handleSubmit">
+                提交并发起审批
+              </n-button>
+              <n-button @click="handleSaveAsDraft">
+                暂存待发
+              </n-button>
+            </template>
             <n-button @click="handleReset">
               重置
             </n-button>
@@ -163,9 +170,12 @@
 
   interface Props {
     config: FormConfig
+    editMode?: boolean
   }
 
-  const props = defineProps<Props>()
+  const props = withDefaults(defineProps<Props>(), {
+    editMode: false
+  })
   const emit = defineEmits<{
     (e: 'submit', payload: FormSubmissionPayload): void
     (e: 'saveAsDraft', payload: FormSubmissionPayload): void

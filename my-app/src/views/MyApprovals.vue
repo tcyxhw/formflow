@@ -300,7 +300,7 @@
         </div>
 
         <!-- 操作区域 -->
-        <div class="action-section" v-if="canEditSubmission || isPendingApproval">
+        <div class="action-section" v-if="canEditSubmission || isPendingApproval || canWithdraw">
           <div class="section-header">
             <h3>操作</h3>
           </div>
@@ -314,6 +314,17 @@
                 </svg>
               </template>
               发起审批
+            </n-button>
+            <!-- 运行中状态：显示撤回按钮 -->
+            <n-button v-if="canWithdraw" type="warning" @click="handleWithdraw" :loading="withdrawLoading">
+              <template #icon>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+              </template>
+              撤回
             </n-button>
             <n-button type="primary" @click="editSubmission">
               <template #icon>
@@ -364,6 +375,7 @@ import { useMySubmittedApprovals } from '@/stores/mySubmittedApprovals'
 import type { MyApprovalItem } from '@/stores/mySubmittedApprovals'
 import FlowDiagram from '@/components/form/FlowDiagram.vue'
 import { startApproval, getSubmissionDetail } from '@/api/submission'
+import { cancelTask } from '@/api/approvals'
 import { useMessage, NA } from 'naive-ui'
 import type { SubmissionDetail } from '@/types/submission'
 import type { AttachmentInfo } from '@/types/attachment'
@@ -377,6 +389,7 @@ const message = useMessage()
 const searchKeyword = ref('')
 const selectedApproval = ref<MyApprovalItem | null>(null)
 const startApprovalLoading = ref(false)
+const withdrawLoading = ref(false)
 
 // 提交详情数据（用于表单数据展示）
 const submissionDetail = ref<SubmissionDetail | null>(null)
@@ -410,6 +423,12 @@ const canEditSubmission = computed(() => {
 const isPendingApproval = computed(() => {
   if (!selectedApproval.value) return false
   return selectedApproval.value.process_state === 'pending_approval'
+})
+
+// 是否可以撤回（运行中状态）
+const canWithdraw = computed(() => {
+  if (!selectedApproval.value) return false
+  return selectedApproval.value.process_state === 'running'
 })
 
 // 方法
@@ -469,6 +488,25 @@ const handleStartApproval = async () => {
     message.error(error?.message || '发起审批失败')
   } finally {
     startApprovalLoading.value = false
+  }
+}
+
+// 撤回审批
+const handleWithdraw = async () => {
+  if (!selectedApproval.value) return
+  
+  withdrawLoading.value = true
+  try {
+    await cancelTask(selectedApproval.value.id)
+    message.success('已撤回审批')
+    // 刷新列表
+    await approvalStore.loadMyApprovals()
+    // 清空选中项
+    selectedApproval.value = null
+  } catch (error: any) {
+    message.error(error?.message || '撤回失败')
+  } finally {
+    withdrawLoading.value = false
   }
 }
 

@@ -45,6 +45,7 @@
         <FormRenderer
           v-else-if="formConfig && canFill"
           :config="formConfig"
+          :edit-mode="isEditMode"
           @submit="handleSubmit"
           @save-as-draft="handleSaveAsDraft"
         />
@@ -264,25 +265,27 @@ const handleSubmit = async (payload: FormSubmissionPayload) => {
   }
 
   try {
-    // 如果是编辑模式，使用更新接口；否则创建新提交
+    // 编辑模式：保存编辑，不触发审批流程
     if (editingSubmissionId.value) {
       await submissionApi.updateSubmission(
         editingSubmissionId.value,
         payload as SubmissionData
       )
-      message.success(isEditMode.value ? '编辑成功' : '更新成功')
-    } else {
-      await submissionApi.createSubmission({
-        form_id: currentFormId.value,
-        data: payload as SubmissionData,
-        auto_trigger_workflow: true  // 提交并发起审批
-      })
-      message.success('提交成功，审批流程已发起')
+      message.success('保存成功')
+      router.push('/form/fill-center')
+      return
     }
-    
+
+    // 新建模式：创建提交并发起审批
+    await submissionApi.createSubmission({
+      form_id: currentFormId.value,
+      data: payload as SubmissionData,
+      auto_trigger_workflow: true
+    })
+    message.success('提交成功，审批流程已发起')
     router.push('/form/fill-center')
   } catch (error) {
-    message.error(resolveErrorMessage(error, editingSubmissionId.value ? '更新失败' : '提交失败'))
+    message.error(resolveErrorMessage(error, editingSubmissionId.value ? '保存失败' : '提交失败'))
   }
 }
 

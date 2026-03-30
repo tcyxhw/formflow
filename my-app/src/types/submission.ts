@@ -83,7 +83,7 @@ export interface SubmissionListItem {
   form_id: number
   form_name: string
   submitter_name: string
-  status: 'submitted' | 'draft' | 'approved' | 'rejected'
+  status: 'submitted' | 'pending_approval' | 'draft' | 'approved' | 'rejected'
   created_at: string
   process_instance_id?: number | null
   process_state?: string | null
