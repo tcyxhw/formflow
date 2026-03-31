@@ -1,0 +1,183 @@
+# Runtime Benchmarks V1
+# Defines minimal benchmark scenarios for task/checkpoint/release-check runtime paths
+
+schema_version: "1.0"
+description: "Minimal benchmark scenarios for runtime automation V1"
+
+# ============================================================
+# TASK BENCHMARKS
+# ============================================================
+task:
+  - id: T1
+    name: "Lite profile task"
+    description: "Small style fix task"
+    command: "python3 scripts/prepare_task_context.py --task \"修复表单组件样式问题\" --lite"
+    expected:
+      profile: "Lite"
+      task_context_exists: true
+      task_capsule_exists: true
+      predicted_domains_nonempty: true
+      routing_planner: "planner-lite"
+    checks:
+      - field: "profile"
+        equals: "Lite"
+      - field: "routing.planner_agent"
+        equals: "planner-lite"
+
+  - id: T2
+    name: "Normal/Contract profile task"
+    description: "API + TypeScript contract change"
+    command: "python3 scripts/prepare_task_context.py --task \"修改用户表单API并同步前端Typescript类型\""
+    expected:
+      profile: ["Normal", "Strict"]
+      task_context_exists: true
+      task_capsule_exists: true
+      predicted_domains_contains: "contract"
+    checks:
+      - field: "profile"
+        in: ["Normal", "Strict"]
+      - field: "predicted_domains"
+        contains: "contract"
+
+  - id: T3
+    name: "Strict/Risk profile task"
+    description: "Permission delete risk task"
+    command: "python3 scripts/prepare_task_context.py --task \"修复权限删除时关联记录未清理的问题\""
+    expected:
+      profile: "Strict"
+      task_context_exists: true
+      task_capsule_exists: true
+      routing_planner: "planner-strict"
+    checks:
+      - field: "profile"
+        equals: "Strict"
+      - field: "routing.planner_agent"
+        equals: "planner-strict"
+
+  - id: T4
+    name: "Style-only task should be frontend only"
+    description: "Style/UI task should not trigger backend"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      predicted_domains_contains: "frontend"
+      predicted_domains_not_contains: "backend"
+    checks:
+      - field: "predicted_domains"
+        contains: "frontend"
+      - field: "predicted_domains"
+        not_contains: "backend"
+
+  - id: T5
+    name: "Permission delete triggers risk domain"
+    description: "Permission/security tasks should trigger risk domain"
+    command: "python3 scripts/prepare_task_context.py --task \"修复权限删除时关联记录未清理的问题\""
+    expected:
+      predicted_domains_contains: "risk"
+    checks:
+      - field: "predicted_domains"
+        contains: "risk"
+
+  - id: T6
+    name: "Fallback field exists"
+    description: "Task context should have fallback field"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      fallback_field_exists: true
+    checks:
+      - field: "fallback.used"
+        equals: false
+      - field: "fallback.reasons"
+        is_array: true
+
+# ============================================================
+# CHECKPOINT BENCHMARKS
+# ============================================================
+checkpoint:
+  - id: C1
+    name: "Lite staged change"
+    description: "Small staged change (no real staged files needed)"
+    setup: "python3 scripts/prepare_checkpoint_context.py --staged"
+    expected:
+      profile: ["Lite", "Normal", "Strict"]
+      checkpoint_context_exists: true
+      checkpoint_capsule_exists: true
+    checks:
+      - field: "profile"
+        in: ["Lite", "Normal", "Strict"]
+      - exists: "checkpoint_context.json"
+      - exists: "checkpoint_capsule.md"
+
+  - id: C2
+    name: "Contract staged change"
+    description: "Schema/API staged change detection"
+    setup: "python3 scripts/prepare_checkpoint_context.py --staged --mode checkpoint"
+    expected:
+      triggered_domains_nonempty: true
+    checks:
+      - exists: "checkpoint_context.json"
+
+  - id: C3
+    name: "Risk staged change"
+    description: "Security/permission staged change detection"
+    setup: "python3 scripts/prepare_checkpoint_context.py --staged --mode checkpoint"
+    expected:
+      profile: ["Normal", "Strict"]
+    checks:
+      - exists: "checkpoint_context.json"
+
+  - id: C4
+    name: "Checkpoint fallback field exists"
+    description: "Checkpoint context should have fallback field"
+    setup: "python3 scripts/prepare_checkpoint_context.py --staged"
+    expected:
+      fallback_field_exists: true
+    checks:
+      - field: "fallback.used"
+        equals: false
+      - field: "fallback.reasons"
+        is_array: true
+
+# ============================================================
+# RELEASE-CHECK BENCHMARKS
+# ============================================================
+release_check:
+  - id: R1
+    name: "Backend branch diff"
+    description: "Backend-only branch diff"
+    setup: "python3 scripts/prepare_checkpoint_context.py --mode release-check --base-ref origin/main"
+    expected:
+      release_context_exists: true
+      release_capsule_exists: true
+    checks:
+      - exists: "release_check_context.json"
+      - exists: "release_check_capsule.md"
+
+  - id: R2
+    name: "Schema/Contract branch diff"
+    description: "Schema change detection"
+    setup: "python3 scripts/prepare_checkpoint_context.py --mode release-check --base-ref origin/main"
+    expected:
+      profile: ["Normal", "Strict"]
+    checks:
+      - exists: "release_check_context.json"
+
+  - id: R3
+    name: "Security/Migration branch diff"
+    description: "Risk domain detection"
+    setup: "python3 scripts/prepare_checkpoint_context.py --mode release-check --base-ref origin/main"
+    expected:
+      profile: ["Normal", "Strict"]
+    checks:
+      - exists: "release_check_context.json"
+
+  - id: R4
+    name: "Release-check fallback field exists"
+    description: "Release-check context should have fallback field"
+    setup: "python3 scripts/prepare_checkpoint_context.py --mode release-check --base-ref origin/main"
+    expected:
+      fallback_field_exists: true
+    checks:
+      - field: "fallback.used"
+        equals: false
+      - field: "fallback.reasons"
+        is_array: true
