@@ -138,172 +138,154 @@
           </div>
         </div>
 
-        <!-- 流程图区域 -->
-        <div class="flow-diagram-section">
-          <div class="section-header">
-            <h3>审批流程</h3>
-            <n-button text size="small" @click="refreshFlowData">
-              <template #icon>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                  <path d="M21 3v5h-5"></path>
-                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                  <path d="M3 21v-5h5"></path>
-                </svg>
-              </template>
-              刷新
-            </n-button>
-          </div>
+        <!-- Tab 页签内容区 -->
+        <div class="detail-tabs-container">
+          <n-tabs type="segment" :default-value="'flow'" class="detail-tabs">
+            <!-- Tab 1: 流程图 -->
+            <n-tab-pane name="flow" tab="审批流程">
+              <div class="flow-diagram-container" v-loading="flowLoading">
+                <div v-if="flowNodes.length > 0" class="flow-diagram-wrapper">
+                  <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
+                </div>
+                <n-empty v-else description="暂无流程图数据" />
+              </div>
+            </n-tab-pane>
 
-          <div class="flow-diagram-container" v-loading="flowLoading">
-            <div v-if="flowNodes.length > 0" class="flow-diagram-wrapper">
-              <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
-            </div>
-            <n-empty v-else description="暂无流程图数据" />
-          </div>
-        </div>
-
-        <!-- 表单数据展示 -->
-        <div class="form-data-section">
-          <div class="section-header">
-            <h3>表单数据</h3>
-          </div>
-
-          <div class="form-data-container" v-loading="loadingSubmissionDetail">
-            <div v-if="displayFields.length > 0" class="form-fields">
-              <div
-                v-for="(item, index) in displayFields"
-                :key="item.key"
-                class="form-field-item"
-                :class="{ 'field-alt': index % 2 === 1 }"
-              >
-                <div class="field-label">{{ item.label }}</div>
-                <div class="field-value">
-                  <!-- 附件/图片字段 -->
-                  <template v-if="item.fieldType === 'upload' || item.fieldType === 'image'">
-                    <template v-if="item.attachments && item.attachments.length > 0">
-                      <div class="attachment-list">
-                        <div
-                          v-for="file in item.attachments"
-                          :key="file.id"
-                          class="attachment-item"
-                        >
-                          <template v-if="isImage(file.content_type)">
-                            <div class="image-preview">
-                              <img
-                                :src="file.download_url"
-                                :alt="file.file_name"
-                                class="preview-image"
-                              />
-                              <n-a :href="file.download_url" target="_blank">
-                                <n-button text type="primary" size="tiny">
-                                  下载
-                                </n-button>
-                              </n-a>
+            <!-- Tab 2: 表单数据 -->
+            <n-tab-pane name="form" tab="表单数据">
+              <div class="form-data-container" v-loading="loadingSubmissionDetail">
+                <div v-if="displayFields.length > 0" class="form-fields">
+                  <div
+                    v-for="(item, index) in displayFields"
+                    :key="item.key"
+                    class="form-field-item"
+                    :class="{ 'field-alt': index % 2 === 1 }"
+                  >
+                    <div class="field-label">{{ item.label }}</div>
+                    <div class="field-value">
+                      <!-- 附件/图片字段 -->
+                      <template v-if="item.fieldType === 'upload' || item.fieldType === 'image'">
+                        <template v-if="item.attachments && item.attachments.length > 0">
+                          <div class="attachment-list">
+                            <div
+                              v-for="file in item.attachments"
+                              :key="file.id"
+                              class="attachment-item"
+                            >
+                              <template v-if="isImage(file.content_type)">
+                                <div class="image-preview">
+                                  <AuthImage
+                                    :src="`/api/v1/attachments/${file.id}/download?inline=true`"
+                                    :alt="file.file_name"
+                                    :width="200"
+                                    :height="150"
+                                    object-fit="cover"
+                                    fallback-src="/image-placeholder.png"
+                                  />
+                                  <n-a :href="`/api/v1/attachments/${file.id}/download`" target="_blank">
+                                    <n-button text type="primary" size="tiny">
+                                      下载
+                                    </n-button>
+                                  </n-a>
+                                </div>
+                              </template>
+                              <template v-else>
+                                <n-a :href="file.download_url" target="_blank">
+                                  <n-button text type="primary" size="small">
+                                    {{ file.file_name }}
+                                  </n-button>
+                                </n-a>
+                              </template>
                             </div>
-                          </template>
-                          <template v-else>
-                            <n-a :href="file.download_url" target="_blank">
-                              <n-button text type="primary" size="small">
-                                {{ file.file_name }}
-                              </n-button>
-                            </n-a>
-                          </template>
+                          </div>
+                        </template>
+                        <span v-else class="empty-value">未上传</span>
+                      </template>
+                      <!-- 日期范围字段 -->
+                      <template v-else-if="item.fieldType === 'date-range'">
+                        {{ formatDateRange(item.value) }}
+                      </template>
+                      <!-- 日期字段 -->
+                      <template v-else-if="item.fieldType === 'date'">
+                        {{ formatDateTimeValue(item.value) }}
+                      </template>
+                      <!-- 其他字段 -->
+                      <template v-else>
+                        {{ formatFieldValue(item.value, item.options) }}
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <n-empty v-else-if="!loadingSubmissionDetail" description="暂无表单数据" />
+              </div>
+            </n-tab-pane>
+
+            <!-- Tab 3: 时间线 -->
+            <n-tab-pane name="timeline" tab="审批时间线">
+              <div class="timeline-container" v-loading="flowLoading">
+                <div v-if="processTimeline?.entries?.length" class="timeline">
+                  <div
+                    v-for="(entry, index) in processTimeline.entries"
+                    :key="index"
+                    class="timeline-item"
+                    :class="[`status-${entry.status}`, `action-${entry.action}`]"
+                  >
+                    <div class="timeline-marker">
+                      <div class="marker-dot"></div>
+                      <div class="marker-line" v-if="index < processTimeline.entries.length - 1"></div>
+                    </div>
+                    <div class="timeline-content">
+                      <div class="timeline-header">
+                        <div class="node-name">{{ entry.node_name }}</div>
+                        <n-tag
+                          :type="getTimelineStatusType(entry.status)"
+                          size="small"
+                          :bordered="false"
+                        >
+                          {{ getTimelineStatusLabel(entry.status) }}
+                        </n-tag>
+                      </div>
+                      <div class="timeline-meta">
+                        <div class="meta-item">
+                          <span class="meta-label">处理人：</span>
+                          <span>{{ entry.actor_name || '待处理' }}</span>
+                        </div>
+                        <div class="meta-item">
+                          <span class="meta-label">开始时间：</span>
+                          <span>{{ formatDateTime(entry.started_at) }}</span>
+                        </div>
+                        <div class="meta-item" v-if="entry.completed_at">
+                          <span class="meta-label">完成时间：</span>
+                          <span>{{ formatDateTime(entry.completed_at) }}</span>
+                        </div>
+                        <div class="meta-item" v-if="entry.due_at">
+                          <span class="meta-label">截止时间：</span>
+                          <span :class="{ overdue: entry.remaining_sla_minutes && entry.remaining_sla_minutes <= 0 }">
+                            {{ formatDateTime(entry.due_at) }}
+                          </span>
+                        </div>
+                        <div class="meta-item" v-if="entry.sla_level && entry.sla_level !== 'unknown'">
+                          <span class="meta-label">SLA级别：</span>
+                          <n-tag :type="getSLALevelType(entry.sla_level)" size="small" :bordered="false">
+                            {{ getSLALevelLabel(entry.sla_level) }}
+                          </n-tag>
                         </div>
                       </div>
-                    </template>
-                    <span v-else class="empty-value">未上传</span>
-                  </template>
-                  <!-- 日期范围字段 -->
-                  <template v-else-if="item.fieldType === 'date-range'">
-                    {{ formatDateRange(item.value) }}
-                  </template>
-                  <!-- 日期字段 -->
-                  <template v-else-if="item.fieldType === 'date'">
-                    {{ formatDateTimeValue(item.value) }}
-                  </template>
-                  <!-- 其他字段 -->
-                  <template v-else>
-                    {{ formatFieldValue(item.value, item.options) }}
-                  </template>
+                      <div class="timeline-comment" v-if="entry.comment">
+                        <div class="comment-label">审批意见：</div>
+                        <div class="comment-content">{{ entry.comment }}</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+                <n-empty v-else description="暂无审批时间线" />
               </div>
-            </div>
-            <n-empty v-else-if="!loadingSubmissionDetail" description="暂无表单数据" />
-          </div>
+            </n-tab-pane>
+          </n-tabs>
         </div>
 
-        <!-- 流程时间线 -->
-        <div class="timeline-section">
-          <div class="section-header">
-            <h3>审批时间线</h3>
-          </div>
-
-          <div class="timeline-container" v-loading="flowLoading">
-            <div v-if="processTimeline?.entries?.length" class="timeline">
-              <div
-                v-for="(entry, index) in processTimeline.entries"
-                :key="index"
-                class="timeline-item"
-                :class="[`status-${entry.status}`, `action-${entry.action}`]"
-              >
-                <div class="timeline-marker">
-                  <div class="marker-dot"></div>
-                  <div class="marker-line" v-if="index < processTimeline.entries.length - 1"></div>
-                </div>
-                <div class="timeline-content">
-                  <div class="timeline-header">
-                    <div class="node-name">{{ entry.node_name }}</div>
-                    <n-tag
-                      :type="getTimelineStatusType(entry.status)"
-                      size="small"
-                      :bordered="false"
-                    >
-                      {{ getTimelineStatusLabel(entry.status) }}
-                    </n-tag>
-                  </div>
-                  <div class="timeline-meta">
-                    <div class="meta-item">
-                      <span class="meta-label">处理人：</span>
-                      <span>{{ entry.actor_name || '待处理' }}</span>
-                    </div>
-                    <div class="meta-item">
-                      <span class="meta-label">开始时间：</span>
-                      <span>{{ formatDateTime(entry.started_at) }}</span>
-                    </div>
-                    <div class="meta-item" v-if="entry.completed_at">
-                      <span class="meta-label">完成时间：</span>
-                      <span>{{ formatDateTime(entry.completed_at) }}</span>
-                    </div>
-                    <div class="meta-item" v-if="entry.due_at">
-                      <span class="meta-label">截止时间：</span>
-                      <span :class="{ overdue: entry.remaining_sla_minutes && entry.remaining_sla_minutes <= 0 }">
-                        {{ formatDateTime(entry.due_at) }}
-                      </span>
-                    </div>
-                    <div class="meta-item" v-if="entry.sla_level && entry.sla_level !== 'unknown'">
-                      <span class="meta-label">SLA级别：</span>
-                      <n-tag :type="getSLALevelType(entry.sla_level)" size="small" :bordered="false">
-                        {{ getSLALevelLabel(entry.sla_level) }}
-                      </n-tag>
-                    </div>
-                  </div>
-                  <div class="timeline-comment" v-if="entry.comment">
-                    <div class="comment-label">审批意见：</div>
-                    <div class="comment-content">{{ entry.comment }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <n-empty v-else description="暂无审批时间线" />
-          </div>
-        </div>
-
-        <!-- 操作区域 -->
-        <div class="action-section" v-if="canEditSubmission || isPendingApproval || canWithdraw">
-          <div class="section-header">
-            <h3>操作</h3>
-          </div>
+        <!-- 操作区域（固定在底部） -->
+        <div class="action-section" v-if="canEditSubmission || isPendingApproval || canWithdraw || isCanceled">
           <div class="action-buttons">
             <!-- 暂存待发状态：显示发起审批按钮 -->
             <n-button v-if="isPendingApproval" type="primary" @click="handleStartApproval" :loading="startApprovalLoading">
@@ -314,6 +296,16 @@
                 </svg>
               </template>
               发起审批
+            </n-button>
+            <!-- 已撤回状态：显示提交审批按钮 -->
+            <n-button v-if="isCanceled" type="primary" @click="handleStartApproval" :loading="startApprovalLoading">
+              <template #icon>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <path d="M22 2L11 13"></path>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </template>
+              提交审批
             </n-button>
             <!-- 运行中状态：显示撤回按钮 -->
             <n-button v-if="canWithdraw" type="warning" @click="handleWithdraw" :loading="withdrawLoading">
@@ -326,7 +318,8 @@
               </template>
               撤回
             </n-button>
-            <n-button type="primary" @click="editSubmission">
+            <!-- 暂存待发和已撤回状态：显示编辑表单按钮 -->
+            <n-button v-if="canEditSubmission" type="primary" @click="editSubmission">
               <template #icon>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -374,8 +367,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useMySubmittedApprovals } from '@/stores/mySubmittedApprovals'
 import type { MyApprovalItem } from '@/stores/mySubmittedApprovals'
 import FlowDiagram from '@/components/form/FlowDiagram.vue'
+import AuthImage from '@/components/AuthImage.vue'
 import { startApproval, getSubmissionDetail } from '@/api/submission'
-import { cancelTask } from '@/api/approvals'
+import { cancelTaskBySubmission } from '@/api/approvals'
 import { useMessage, NA } from 'naive-ui'
 import type { SubmissionDetail } from '@/types/submission'
 import type { AttachmentInfo } from '@/types/attachment'
@@ -412,17 +406,24 @@ const filteredApprovals = computed(() => {
   )
 })
 
-// 是否可以编辑提交（暂存待发状态）
+// 是否可以编辑提交（暂存待发或已撤回状态）
 const canEditSubmission = computed(() => {
   if (!selectedApproval.value) return false
-  // 暂存待发状态可以编辑
-  return selectedApproval.value.process_state === 'pending_approval'
+  // 暂存待发和已撤回状态都可以编辑
+  return selectedApproval.value.process_state === 'pending_approval' || 
+         selectedApproval.value.process_state === 'canceled'
 })
 
 // 是否是暂存待发状态
 const isPendingApproval = computed(() => {
   if (!selectedApproval.value) return false
   return selectedApproval.value.process_state === 'pending_approval'
+})
+
+// 是否是已撤回状态
+const isCanceled = computed(() => {
+  if (!selectedApproval.value) return false
+  return selectedApproval.value.process_state === 'canceled'
 })
 
 // 是否可以撤回（运行中状态）
@@ -497,7 +498,7 @@ const handleWithdraw = async () => {
   
   withdrawLoading.value = true
   try {
-    await cancelTask(selectedApproval.value.id)
+    await cancelTaskBySubmission(selectedApproval.value.id)
     message.success('已撤回审批')
     // 刷新列表
     await approvalStore.loadMyApprovals()
@@ -944,6 +945,8 @@ onMounted(async () => {
   border: 1px solid #e2e8f0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .empty-state {
@@ -982,7 +985,7 @@ onMounted(async () => {
 
 /* 详情头部 */
 .detail-header {
-  padding: 24px;
+  padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
 }
@@ -1024,27 +1027,37 @@ onMounted(async () => {
   font-weight: 500;
 }
 
-/* 各个部分 */
-.flow-diagram-section,
-.form-data-section,
-.timeline-section,
-.action-section {
-  padding: 24px;
+/* Tab 页签容器 */
+.detail-tabs-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-tabs :deep(.n-tabs-nav) {
+  padding: 0 24px;
+  background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
 }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+.detail-tabs :deep(.n-tabs-content) {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
 }
 
-.section-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
+/* 操作区域（固定在底部） */
+.action-section {
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
 }
 
 /* 流程图 */

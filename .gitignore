@@ -33,3 +33,15 @@ Thumbs.db
 **/__pycache__/
 *.pyc
 my-app/.kiro/backend/logs/
+
+# AI Agent Runtime
+# Runtime outputs (auto-generated, don't commit)
+.runtime/
+
+# Runtime card scripts (can be committed, not ignored)
+# scripts/build_rule_runtime_cards.py
+# scripts/generate_review_output.py
+# scripts/prepare_checkpoint_context.py
+# scripts/run_checkpoint_gates.py
+# scripts/update_evidence_from_review.py
+# scripts/validate_runtime_cards.py

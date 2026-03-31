@@ -222,7 +222,6 @@ service.interceptors.request.use(
 // 响应拦截器
 service.interceptors.response.use(
   async (response: AxiosResponse<Response>) => {
-    console.log("全部响应：",response);
     NProgress.done()
     
     
@@ -254,8 +253,6 @@ service.interceptors.response.use(
   },
   
   async (error: AxiosError<ApiErrorBody>) => {
-    
-    console.log("全部响应：",error);
     NProgress.done()
     
     const config = error.config as CustomAxiosRequestConfig
@@ -267,7 +264,13 @@ service.interceptors.response.use(
     
     // 取消的请求静默处理，返回空响应
     if (axios.isCancel(error)) {
-      return Promise.resolve({ data: null, status: 0, statusText: 'canceled', headers: {}, config: error.config || {} })
+      return Promise.resolve({ 
+        data: { code: 0, data: null, message: 'canceled' }, 
+        status: 0, 
+        statusText: 'canceled', 
+        headers: {}, 
+        config: error.config || {} 
+      })
     }
     
     // 重试机制

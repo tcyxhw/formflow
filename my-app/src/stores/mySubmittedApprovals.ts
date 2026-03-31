@@ -296,8 +296,8 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     switch (state) {
       case 'running': return 'info'
       case 'finished': return 'success'
-      case 'stopped':
-      case 'canceled': return 'error'
+      case 'stopped': return 'error'
+      case 'canceled': return 'warning'  // 撤回后显示为警告状态（待提交）
       case 'pending_approval': return 'warning'  // 暂存待发显示为警告状态
       default: return 'info'
     }
@@ -311,8 +311,8 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     switch (state) {
       case 'running': return '进行中'
       case 'finished': return '已完成'
-      case 'stopped':
-      case 'canceled': return '已停止'
+      case 'stopped': return '已停止'
+      case 'canceled': return '待提交'  // 撤回后显示为待提交
       case 'pending_approval': return '暂存待发'  // 暂存待发状态
       default: return '进行中'
     }

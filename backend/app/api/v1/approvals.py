@@ -340,3 +340,52 @@ async def get_process_timeline(
         db=db,
     )
     return success_response(data=timeline.model_dump())
+
+
+@router.post("/submissions/{submission_id}/cancel", summary="根据提交ID撤回审批")
+@audit_log(action="cancel_task_by_submission", resource_type="task")
+async def cancel_task_by_submission(
+    submission_id: int = Path(..., ge=1, description="提交 ID"),
+    request: Request = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db),
+):
+    """根据提交ID撤回审批流程。
+
+    撤回条件：任务状态为 open（未被认领）且未被审批节点审批过
+    撤回后：任务标记为取消，流程实例取消，提交记录状态回退为待发起审批
+
+    :param submission_id: 提交ID
+    :param request: HTTP请求对象（用于审计日志）
+    :param current_user: 当前用户
+    :param tenant_id: 租户ID
+    :param db: 数据库会话
+    :return: 取消后的任务数据
+
+    Time: O(1), Space: O(1)
+    """
+    from app.models.workflow import ProcessInstance, Task
+
+    # 根据 submission_id 查找对应的 process_instance
+    process_instance = db.query(ProcessInstance).filter(
+        ProcessInstance.submission_id == submission_id,
+        ProcessInstance.tenant_id == tenant_id
+    ).first()
+
+    if not process_instance:
+        raise BusinessError("未找到关联的审批流程")
+
+    # 查找该流程实例下的 open 状态任务
+    task = db.query(Task).filter(
+        Task.process_instance_id == process_instance.id,
+        Task.status == "open"
+    ).first()
+
+    if not task:
+        raise BusinessError("任务不存在或已被处理")
+
+    # 调用 cancel_task 服务
+    task_response = TaskService.cancel_task(task.id, tenant_id, current_user, db)
+    return success_response(data=task_response.model_dump(), message="任务已撤回")

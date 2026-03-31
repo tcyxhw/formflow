@@ -200,7 +200,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await authAPI.getCurrentUser()
         
-        if (response.code === 200 && response.data) {
+        // 防御性检查：response 和 response.data 都可能为 null
+        if (response && response.code === 200 && response.data) {
           this.userInfo = response.data
         }
       } catch (error: any) {

@@ -94,3 +94,10 @@ export const getProcessTimeline = (
 export const cancelTask = (taskId: number): Promise<Response<TaskResponse>> => {
   return request.post(`${APPROVAL_BASE_PATH}/${taskId}/cancel`)
 }
+
+/**
+ * 根据提交ID撤回审批流程
+ */
+export const cancelTaskBySubmission = (submissionId: number): Promise<Response<TaskResponse>> => {
+  return request.post(`${APPROVAL_BASE_PATH}/submissions/${submissionId}/cancel`)
+}
