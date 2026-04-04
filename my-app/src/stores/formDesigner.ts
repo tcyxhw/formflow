@@ -46,6 +46,9 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     rules: [],
   })
   
+  // 脏标记：是否有未保存的更改
+  const dirty = ref(false)
+  
   // 计算属性
   const selectedField = computed(() => {
     return fields.value.find(f => f.id === selectedFieldId.value)
@@ -80,6 +83,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     
     fields.value.push(newField)
     selectedFieldId.value = newField.id
+    dirty.value = true
 
     console.log('✅ Field added:', newField)
     console.log('✅ Total fields:', fields.value.length)
@@ -90,6 +94,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     const index = fields.value.findIndex(f => f.id === fieldId)
     if (index !== -1) {
       fields.value[index] = { ...fields.value[index], ...updates }
+      dirty.value = true
     }
   }
   
@@ -100,12 +105,14 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
       if (selectedFieldId.value === fieldId) {
         selectedFieldId.value = undefined
       }
+      dirty.value = true
     }
   }
   
   const moveField = (fromIndex: number, toIndex: number) => {
     const field = fields.value.splice(fromIndex, 1)[0]
     fields.value.splice(toIndex, 0, field)
+    dirty.value = true
   }
   
   const selectField = (fieldId: string) => {
@@ -158,6 +165,8 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     if (config.logic_json) {
       logicSchema.value = config.logic_json
     }
+    
+    dirty.value = false
   }
   
   const reset = () => {
@@ -184,6 +193,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     logicSchema.value = {
       rules: [],
     }
+    dirty.value = false
   }
   
   return {
@@ -200,6 +210,7 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     selectedFieldId,
     uiSchema,
     logicSchema,
+    dirty,
     
     // 计算属性
     selectedField,

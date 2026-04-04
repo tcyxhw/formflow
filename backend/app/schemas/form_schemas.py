@@ -152,8 +152,11 @@ class FormResponse(BaseModel):
     updated_at: datetime
 
     # 关联数据（可选）
-    current_version: Optional[int] = Field(None, description="当前版本号")
+    current_version: Optional[int] = Field(None, description="当前发布版本号")
     total_submissions: Optional[int] = Field(None, description="提交总数")
+    draft_version: Optional[int] = Field(None, description="草稿版本号（存在时为 0）")
+    has_unpublished_changes: Optional[bool] = Field(None, description="是否有未发布的表单更改")
+    has_flow_changes: Optional[bool] = Field(None, description="是否有未发布的审批流程更改")
 
     class Config:
         from_attributes = True

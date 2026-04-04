@@ -424,6 +424,11 @@ export const useFlowDraftStore = defineStore('flowDraft', () => {
     ensureDefinitionReady()
     publishing.value = true
     try {
+      // 发布前先保存草稿，确保服务端版本与前端一致，避免乐观锁冲突
+      if (dirty.value) {
+        await saveDraftRemote()
+      }
+
       const payload = buildPayload()
       const snapshot = await publishFlow(flowDefinitionId.value!, {
         flow_definition_id: payload.flow_definition_id,

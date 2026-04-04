@@ -15,6 +15,7 @@ from app.services.export_service import ExportService
 from app.core.response import success_response, error_response
 from app.core.exceptions import ValidationError, BusinessError, NotFoundError
 from app.models.user import User
+from app.models.form import Submission
 from app.utils.audit import audit_log
 import logging
 
@@ -526,3 +527,318 @@ async def start_approval(
     except Exception as e:
         logger.error(f"Start approval error: {e}", exc_info=True)
         return error_response("发起审批失败", 5001)
+
+
+def _convert_field_value(field: dict, raw_value, label_to_value: dict) -> any:
+    """根据字段类型转换 Excel 单元格值。"""
+    from datetime import datetime, date, time as dt_time
+
+    ftype = field.get("type", "text")
+    fid = field.get("id", "")
+    val = raw_value
+
+    if ftype in ("select", "radio"):
+        mapping = label_to_value.get(fid, {})
+        return mapping.get(str(val), str(val))
+
+    if ftype == "checkbox":
+        mapping = label_to_value.get(fid, {})
+        parts = [s.strip() for s in str(val).split(",") if s.strip()]
+        return [mapping.get(p, p) for p in parts]
+
+    if ftype == "switch":
+        s = str(val).strip().lower()
+        return s in ("是", "true", "1", "yes")
+
+    if ftype in ("date", "datetime"):
+        if isinstance(val, datetime):
+            return val.strftime("%Y-%m-%d")
+        if isinstance(val, date):
+            return val.strftime("%Y-%m-%d")
+        s = str(val).strip().replace("/", "-")
+        return s
+
+    if ftype in ("date_range", "date-range"):
+        import re
+        
+        # 处理单个 datetime 对象（Excel 中可能是单个日期）
+        if isinstance(val, datetime):
+            d = val.strftime("%Y-%m-%d")
+            return {"start": d, "end": d}
+        
+        # 处理列表/tuple类型的日期范围
+        if hasattr(val, '__iter__') and not isinstance(val, str):
+            try:
+                items = list(val)
+                if len(items) >= 2:
+                    start_dt = items[0]
+                    end_dt = items[1]
+                    if hasattr(start_dt, 'strftime'):
+                        return {"start": start_dt.strftime("%Y-%m-%d"), "end": end_dt.strftime("%Y-%m-%d")}
+            except (TypeError, IndexError, KeyError):
+                pass
+        
+        # 解析字符串中的日期
+        s = str(val).strip().replace("/", "-").replace("\\", "-") if val else ""
+        
+        # 使用正则表达式提取两个日期（更可靠的方法）
+        date_pattern = r'\d{4}-\d{2}-\d{2}'
+        dates = re.findall(date_pattern, s)
+        if len(dates) == 2:
+            return {"start": dates[0], "end": dates[1]}
+        
+        # 如果正则只找到一个日期，返回单个日期
+        if len(dates) == 1:
+            return {"start": dates[0], "end": dates[0]}
+        
+        return s
+
+    if ftype == "time":
+        if isinstance(val, dt_time):
+            return val.strftime("%H:%M")
+        if isinstance(val, datetime):
+            return val.strftime("%H:%M")
+        return str(val).strip()
+
+    if ftype in ("number", "rate"):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return val
+
+    return str(val).strip()
+
+
+@router.post("/batch-import", summary="批量导入表单数据（创建草稿）")
+@audit_log(action="batch_import", resource_type="submission")
+async def batch_import(
+        form_id: int = Body(..., embed=True),
+        file: UploadFile = File(...),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """解析 Excel 文件，为每行数据创建一条草稿提交。"""
+    from openpyxl import load_workbook
+    from io import BytesIO
+    from app.models.form import Form, FormVersion
+    from app.services.formula_service import FormulaService
+
+    form = db.query(Form).filter(Form.id == form_id, Form.tenant_id == tenant_id).first()
+    if not form:
+        raise NotFoundError("表单不存在")
+
+    # 权限校验：表单创建者或有填写/管理权限的用户
+    from app.services.form_permission_service import FormPermissionService
+    if form.owner_user_id != current_user.id:
+        has_perm = FormPermissionService.has_permission(
+            form_id=form_id,
+            tenant_id=tenant_id,
+            user_id=current_user.id,
+            perm_type="fill",
+            db=db,
+        )
+        if not has_perm:
+            has_manage = FormPermissionService.has_permission(
+                form_id=form_id,
+                tenant_id=tenant_id,
+                user_id=current_user.id,
+                perm_type="manage",
+                db=db,
+            )
+            if not has_manage:
+                raise AuthorizationError("无权限导入此表单数据")
+
+    version = db.query(FormVersion).filter(
+        FormVersion.form_id == form_id,
+        FormVersion.version > 0,
+    ).order_by(FormVersion.version.desc()).first()
+    if not version:
+        raise NotFoundError("表单未发布")
+
+    schema_json = version.schema_json
+    fields = schema_json.get("fields", [])
+    SKIP_TYPES = {"description", "divider", "calculated", "upload"}
+    import_fields = [f for f in fields if f.get("type") not in SKIP_TYPES]
+
+    # 预构建 label→value 映射
+    label_to_value: dict[str, dict[str, str]] = {}
+    for f in import_fields:
+        fid = f.get("id")
+        options = f.get("props", {}).get("options", [])
+        if options:
+            mapping = {}
+            for opt in options:
+                lbl = str(opt.get("label", opt.get("value", "")))
+                val = str(opt.get("value", lbl))
+                mapping[lbl] = val
+                mapping[val] = val
+            label_to_value[fid] = mapping
+
+    content = await file.read()
+    wb = load_workbook(BytesIO(content), read_only=True)
+    ws = wb.active
+
+    # 跳过表头(行1)、格式说明(行2)和示例数据(行3)，从行4开始读数据
+    rows = list(ws.iter_rows(min_row=4, values_only=True))
+    wb.close()
+
+    if not rows:
+        return error_response("Excel 文件中没有数据行", 4001)
+
+    # 收集计算字段
+    calc_fields = [f for f in fields if f.get("type") == "calculated"]
+
+    created = []
+    for row_idx, row in enumerate(rows, start=3):
+        if all(cell is None for cell in row):
+            continue
+        data = {}
+        for col_idx, field in enumerate(import_fields):
+            if col_idx < len(row):
+                val = row[col_idx]
+                if val is not None:
+                    converted = _convert_field_value(field, val, label_to_value)
+                    data[field["id"]] = converted
+        if not data:
+            continue
+
+        # 计算字段自动求值
+        for cf in calc_fields:
+            formula = cf.get("props", {}).get("formula", "")
+            if formula:
+                try:
+                    data[cf["id"]] = FormulaService.evaluate(formula, data)
+                except Exception:
+                    pass
+
+        from app.services.submission_service import SubmissionService
+        snapshot = SubmissionService.build_snapshot(version)
+        
+        submission = Submission(
+            form_id=form_id,
+            form_version_id=version.id,
+            tenant_id=tenant_id,
+            submitter_user_id=current_user.id,
+            data_jsonb=data,
+            snapshot_json=snapshot,
+            status="draft",
+        )
+        db.add(submission)
+        db.flush()
+        created.append({"id": submission.id, "row": row_idx})
+
+    db.commit()
+
+    return success_response(
+        data={"created": len(created), "items": created},
+        message=f"成功导入 {len(created)} 条草稿",
+    )
+
+
+@router.post("/batch-submit", summary="批量提交审批")
+@audit_log(action="batch_submit", resource_type="submission")
+async def batch_submit(
+        submission_ids: List[int] = Body(..., embed=True),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """将多条 draft 状态的提交批量发起审批流程。"""
+    if not submission_ids:
+        return error_response("请选择要提交的记录", 4001)
+
+    results = []
+    for sid in submission_ids:
+        try:
+            submission = SubmissionService.start_approval(
+                submission_id=sid,
+                tenant_id=tenant_id,
+                user_id=current_user.id,
+                db=db,
+            )
+            results.append({"id": sid, "success": True})
+        except Exception as e:
+            results.append({"id": sid, "success": False, "error": str(e)})
+
+    db.commit()
+
+    success_count = sum(1 for r in results if r["success"])
+    return success_response(
+        data={"total": len(results), "success": success_count, "items": results},
+        message=f"批量提交完成：成功 {success_count}/{len(results)}",
+    )
+
+
+@router.post("/batch-approve", summary="批量通过（确认导入数据）")
+@audit_log(action="batch_approve", resource_type="submission")
+async def batch_approve(
+        submission_ids: List[int] = Body(..., embed=True),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """将多条 draft 状态的提交标记为已通过并自动发起审批流程。"""
+    from app.services.process_service import ProcessService
+    from app.services.formula_service import FormulaService
+    from app.models.form import FormVersion
+    
+    if not submission_ids:
+        return error_response("请选择要通过的记录", 4001)
+
+    results = []
+    for sid in submission_ids:
+        submission = db.query(Submission).filter(
+            Submission.id == sid,
+            Submission.tenant_id == tenant_id,
+            Submission.submitter_user_id == current_user.id,
+            Submission.status == "draft",
+        ).first()
+        if not submission:
+            results.append({"id": sid, "success": False, "error": "记录不存在或状态不正确"})
+            continue
+        
+        try:
+            submission.status = "pending_approval"
+            db.flush()
+            
+            form_version = db.query(FormVersion).filter(
+                FormVersion.id == submission.form_version_id
+            ).first()
+            
+            try:
+                process = ProcessService.start_process(
+                    form_id=submission.form_id,
+                    form_version_id=submission.form_version_id,
+                    submission_id=submission.id,
+                    tenant_id=tenant_id,
+                    db=db
+                )
+                submission.status = "submitted"
+                logger.info(f"批量通过时自动创建流程实例成功: submission_id={sid}, process_id={process.id}")
+            except BusinessError as e:
+                # 流程创建失败，回滚 submission 状态
+                logger.warning(f"批量通过时自动创建流程实例失败，已回滚状态: submission_id={sid}, error={e}")
+                submission.status = "draft"
+                db.flush()
+                results.append({"id": sid, "success": False, "error": f"流程创建失败: {e}"})
+                continue
+            except Exception as e:
+                # 其他异常也回滚状态
+                logger.error(f"批量通过时创建流程实例异常，已回滚状态: submission_id={sid}, error={e}")
+                submission.status = "draft"
+                db.flush()
+                results.append({"id": sid, "success": False, "error": f"流程创建异常: {e}"})
+                continue
+            
+            results.append({"id": sid, "success": True})
+        except Exception as e:
+            logger.error(f"批量通过处理失败: submission_id={sid}, error={e}")
+            results.append({"id": sid, "success": False, "error": str(e)})
+
+    db.commit()
+    success_count = sum(1 for r in results if r["success"])
+    return success_response(
+        data={"total": len(results), "success": success_count, "items": results},
+        message=f"批量通过完成：成功 {success_count}/{len(results)}",
+    )

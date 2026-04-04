@@ -79,7 +79,12 @@ class LoggingMiddleware:
                     "request_id": request_id,
                     "process_time": process_time
                 },
-                exc_info=True
+                exc_info=True,
             )
+
+            # 如果响应已经开始（响应头已发送），不能再抛出异常，
+            # 否则 Starlette 会抛出 RuntimeError: Caught handled exception, but response already started.
+            if response_started:
+                return
 
             raise

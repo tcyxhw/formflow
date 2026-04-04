@@ -23,6 +23,13 @@
           {{ statusText }}
         </n-tag>
 
+        <n-tag v-if="designerStore.dirty" type="warning" size="small" style="margin-left: 8px">
+          <template #icon>
+            <n-icon><Icon icon="carbon:warning" /></n-icon>
+          </template>
+          有未保存的更改
+        </n-tag>
+
         <!-- AI 生成标识 -->
         <n-tag v-if="isAIGenerated" type="success" size="small" style="margin-left: 8px">
           <template #icon>
@@ -332,10 +339,12 @@ const handleSave = async () => {
     
     if (designerStore.formId) {
       await formApi.updateForm(designerStore.formId, payload)
+      designerStore.dirty = false
       message.success('保存成功')
     } else {
       const res = await formApi.createForm(payload)
       designerStore.formId = res.data.id
+      designerStore.dirty = false
       message.success('创建成功')
       router.replace({ query: { id: res.data.id } })
     }

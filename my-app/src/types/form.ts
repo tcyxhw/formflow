@@ -61,6 +61,10 @@ export interface FormResponse {
   flow_definition_id?: number
   created_at: string
   updated_at: string
+  // 版本对比相关
+  draft_version?: number | null
+  has_unpublished_changes?: boolean
+  has_flow_changes?: boolean
   // 前端计算字段，用于控制操作按钮显示
   can_manage?: boolean
 }

@@ -391,8 +391,19 @@
     {
       title: '版本',
       key: 'current_version',
-      width: 80,
-      render: (row) => row.current_version || '0',
+      width: 160,
+      render: (row) => {
+        const publishedVer = row.current_version || 0
+        const hasUnpublished = row.has_unpublished_changes
+        return h(NSpace, { align: 'center', size: 6 }, {
+          default: () => [
+            h('span', { style: { fontSize: '13px', color: '#64748b' } }, `v${publishedVer}`),
+            hasUnpublished
+              ? h(NTag, { type: 'warning', size: 'tiny', bordered: false }, { default: () => '有未发布更改' })
+              : null,
+          ],
+        })
+      },
     },
     {
       title: '提交数',
@@ -413,6 +424,8 @@
       fixed: 'right',
       render: (row) => {
         const isDraft = row.status === FormStatus.DRAFT
+        const isPublished = row.status === FormStatus.PUBLISHED
+        const hasUnpublished = row.has_unpublished_changes
 
         return h(
           NSpace,
@@ -454,6 +467,15 @@
                   onClick: () => handlePublish(row),
                 },
                 { default: () => '发布' }
+              ),
+              isPublished && hasUnpublished && h(
+                NButton,
+                {
+                  size: 'small',
+                  type: 'warning',
+                  onClick: () => handleRepublish(row),
+                },
+                { default: () => '重新发布' }
               ),
               h(
                 NButton,
@@ -751,6 +773,25 @@
           loadList()
         } catch (error) {
           message.error(resolveErrorMessage(error, '发布失败'))
+        }
+      },
+    })
+  }
+
+  // 重新发布表单（将草稿版本的更改发布为新版本）
+  const handleRepublish = async (row: FormResponse) => {
+    dialog.warning({
+      title: '确认重新发布',
+      content: `表单"${row.name}"存在未发布的更改。重新发布将创建新版本并立即生效，是否继续？`,
+      positiveText: '重新发布',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        try {
+          await formApi.publishForm(row.id)
+          message.success('重新发布成功')
+          loadList()
+        } catch (error) {
+          message.error(resolveErrorMessage(error, '重新发布失败'))
         }
       },
     })

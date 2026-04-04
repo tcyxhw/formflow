@@ -279,6 +279,8 @@ async def list_forms(
             stats = FormService.get_form_statistics(form.id, tenant_id, db)
             item["current_version"] = stats["current_version"]
             item["total_submissions"] = stats["total_submissions"]
+            item["draft_version"] = stats.get("draft_version")
+            item["has_unpublished_changes"] = stats.get("has_unpublished_changes", False)
             items.append(item)
 
         response = FormListResponse(
@@ -937,3 +939,185 @@ async def get_or_create_flow_definition(
     except Exception as e:
         logger.error(f"Error in get_or_create_flow_definition: {e}")
         return error_response("操作失败", 5001)
+
+
+def _get_field_hint(ftype: str, field: dict) -> str:
+    """返回字段类型的填写提示。"""
+    hints = {
+        "text": "自由文本",
+        "textarea": "自由文本",
+        "number": "数字",
+        "phone": "手机号（11位）",
+        "email": "邮箱地址",
+        "date": "日期（YYYY-MM-DD）",
+        "datetime": "日期时间（YYYY-MM-DD）",
+        "time": "时间（HH:MM）",
+        "date_range": "起止日期（YYYY-MM-DD ~ YYYY-MM-DD）",
+        "date-range": "起止日期（YYYY-MM-DD ~ YYYY-MM-DD）",
+        "select": "从下拉选项中选择",
+        "radio": "从选项中选择",
+        "checkbox": "多选用逗号分隔",
+        "switch": "是 / 否",
+        "rate": "数字（1-5）",
+    }
+    return hints.get(ftype, "")
+
+
+def _get_field_example(ftype: str, field: dict) -> any:
+    """返回字段类型的示例值。"""
+    props = field.get("props", {})
+    options = props.get("options", [])
+
+    if ftype in ("text", "textarea"):
+        label = field.get("label", "")
+        if "姓名" in label:
+            return "张三"
+        if "学号" in label or "工号" in label:
+            return "2024001"
+        if "手机" in label or "电话" in label:
+            return "13800138000"
+        if "邮箱" in label:
+            return "zhangsan@example.com"
+        return "示例文本"
+    if ftype in ("phone",):
+        return "13800138000"
+    if ftype in ("email",):
+        return "zhangsan@example.com"
+    if ftype == "number":
+        return 100
+    if ftype in ("date", "datetime"):
+        return "2026-04-01"
+    if ftype == "time":
+        return "09:00"
+    if ftype in ("date_range", "date-range"):
+        return "2026-04-01 ~ 2026-04-03"
+    if ftype in ("select", "radio") and options:
+        return options[0].get("label", options[0].get("value", ""))
+    if ftype == "checkbox" and options:
+        return options[0].get("label", options[0].get("value", ""))
+    if ftype == "switch":
+        return "是"
+    if ftype == "rate":
+        return 5
+    return ""
+
+
+@router.get("/{form_id}/import-template", summary="下载Excel导入模板")
+@audit_log(action="download_import_template", resource_type="form")
+async def download_import_template(
+        form_id: int = Path(..., ge=1),
+        current_user: User = Depends(get_current_user),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """根据表单字段结构生成 Excel 导入模板。"""
+    from fastapi.responses import StreamingResponse
+    from app.models.form import Form, FormVersion
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from io import BytesIO
+
+    form = db.query(Form).filter(Form.id == form_id, Form.tenant_id == tenant_id).first()
+    if not form:
+        raise NotFoundError("表单不存在")
+
+    version = db.query(FormVersion).filter(
+        FormVersion.form_id == form_id,
+        FormVersion.version > 0,
+    ).order_by(FormVersion.version.desc()).first()
+    if not version:
+        raise NotFoundError("表单未发布")
+
+    schema_json = version.schema_json
+    fields = schema_json.get("fields", [])
+    SKIP_TYPES = {"description", "divider", "calculated", "upload"}
+    import_fields = [f for f in fields if f.get("type") not in SKIP_TYPES]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入模板"
+
+    hint_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+
+    for col, field in enumerate(import_fields, 1):
+        ftype = field.get("type", "text")
+        label = field.get("label", field.get("id", ""))
+        required = field.get("required", False)
+        header = f"{label}{' *' if required else ''}"
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+        col_letter = cell.column_letter
+        ws.column_dimensions[col_letter].width = max(len(header) * 2 + 4, 14)
+
+        # 第二行：格式说明
+        hint = _get_field_hint(ftype, field)
+        hint_cell = ws.cell(row=2, column=col, value=hint)
+        hint_cell.font = Font(italic=True, color="888888", size=9)
+        hint_cell.fill = hint_fill
+        hint_cell.alignment = Alignment(horizontal="center")
+
+        # 第三行：示例数据
+        example = _get_field_example(ftype, field)
+        ex_cell = ws.cell(row=3, column=col, value=example)
+        ex_cell.font = Font(italic=True, color="4472C4")
+        ex_cell.alignment = Alignment(horizontal="center")
+
+        # 枚举类字段：添加下拉列表
+        if ftype in ("select", "radio"):
+            options = field.get("props", {}).get("options", [])
+            labels = [str(o.get("label", o.get("value", ""))) for o in options if o]
+            if labels:
+                dv = DataValidation(type="list", formula1=f'"{",".join(labels)}"', allow_blank=True)
+                dv.error = f"请输入有效选项: {', '.join(labels)}"
+                dv.errorTitle = "无效输入"
+                dv.prompt = f"请选择: {', '.join(labels)}"
+                dv.promptTitle = label
+                dv.sqref = f"{col_letter}4:{col_letter}1048576"
+                ws.add_data_validation(dv)
+
+        elif ftype == "checkbox":
+            options = field.get("props", {}).get("options", [])
+            labels = [str(o.get("label", o.get("value", ""))) for o in options if o]
+            if labels:
+                prompt_text = f"可多选，用逗号分隔。可选值: {', '.join(labels)}"
+                dv = DataValidation(type="list", formula1=f'"{",".join(labels)}"', allow_blank=True)
+                dv.prompt = prompt_text
+                dv.promptTitle = label
+                dv.sqref = f"{col_letter}4:{col_letter}1048576"
+                ws.add_data_validation(dv)
+
+        elif ftype == "switch":
+            dv = DataValidation(type="list", formula1='"是,否"', allow_blank=True)
+            dv.prompt = "请选择 是 或 否"
+            dv.promptTitle = label
+            dv.sqref = f"{col_letter}4:{col_letter}1048576"
+            ws.add_data_validation(dv)
+
+        # 日期字段：设置单元格格式
+        elif ftype in ("date", "datetime", "date-range"):
+            for row in range(4, 53):
+                ws.cell(row=row, column=col).number_format = "YYYY-MM-DD"
+        elif ftype == "time":
+            for row in range(4, 53):
+                ws.cell(row=row, column=col).number_format = "HH:MM"
+        elif ftype in ("number", "rate"):
+            for row in range(4, 53):
+                ws.cell(row=row, column=col).number_format = "0"
+
+    ws.row_dimensions[2].height = 20
+    ws.freeze_panes = "A3"
+
+    from urllib.parse import quote
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    safe_name = quote(f"template_{form.name}.xlsx")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}"},
+    )

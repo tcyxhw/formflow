@@ -448,11 +448,20 @@ class FormService:
 
         # 获取当前生效的版本
         if form.status == FormStatus.PUBLISHED.value:
-            # 已发布：使用最新发布版本
+            # 已发布：优先使用最新发布版本
             current_version = db.query(FormVersion).filter(
                 FormVersion.form_id == form_id,
                 FormVersion.version > 0
             ).order_by(FormVersion.version.desc()).first()
+
+            # 如果发布版本不存在或没有 schema，回退到草稿版本
+            if not current_version or not current_version.schema_json:
+                draft_version = db.query(FormVersion).filter(
+                    FormVersion.form_id == form_id,
+                    FormVersion.version == 0
+                ).first()
+                if draft_version and draft_version.schema_json:
+                    current_version = draft_version
         else:
             # 草稿：使用草稿版本
             current_version = db.query(FormVersion).filter(
@@ -622,7 +631,9 @@ class FormService:
             {
                 "total_submissions": 提交总数,
                 "total_versions": 版本总数,
-                "current_version": 当前版本号
+                "current_version": 当前发布版本号,
+                "draft_version": 草稿版本号（存在时为 0）,
+                "has_unpublished_changes": 是否有未发布的表单更改,
             }
         """
         from app.models.form import Submission
@@ -634,22 +645,45 @@ class FormService:
             Submission.form_id == form_id
         ).scalar()
 
-        # 统计版本数
+        # 统计发布版本数
         total_versions = db.query(func.count(FormVersion.id)).filter(
             FormVersion.form_id == form_id,
             FormVersion.version > 0
         ).scalar()
 
-        # 当前版本号
+        # 当前发布版本号
         current_version = db.query(func.max(FormVersion.version)).filter(
             FormVersion.form_id == form_id,
             FormVersion.version > 0
         ).scalar() or 0
 
+        # 检查草稿版本是否存在且有内容
+        draft_version = db.query(FormVersion).filter(
+            FormVersion.form_id == form_id,
+            FormVersion.version == 0,
+            FormVersion.schema_json.isnot(None),
+        ).first()
+
+        has_unpublished_changes = False
+        if draft_version and draft_version.schema_json and current_version > 0:
+            # 有草稿且有发布版本，对比 schema 判断是否有未发布更改
+            latest_published = db.query(FormVersion).filter(
+                FormVersion.form_id == form_id,
+                FormVersion.version == current_version,
+            ).first()
+            if latest_published and latest_published.schema_json:
+                has_unpublished_changes = (
+                    draft_version.schema_json != latest_published.schema_json
+                    or draft_version.ui_schema_json != latest_published.ui_schema_json
+                    or draft_version.logic_json != latest_published.logic_json
+                )
+
         return {
             "total_submissions": total_submissions or 0,
             "total_versions": total_versions or 0,
-            "current_version": current_version
+            "current_version": current_version,
+            "draft_version": 0 if draft_version else None,
+            "has_unpublished_changes": has_unpublished_changes,
         }
 
     @staticmethod
