@@ -638,9 +638,16 @@ function formatValueByType(value: unknown, type: string, key: string): {
       return { displayValue: formatTimestamp(value) }
     
     case 'date-range':
+      // 处理数组格式 [start, end]
       if (Array.isArray(value) && value.length === 2) {
         const start = formatTimestamp(value[0])
         const end = formatTimestamp(value[1])
+        return { displayValue: `${start} 至 ${end}` }
+      }
+      // 处理对象格式 {"start": "2026-04-01", "end": "2026-04-07"}
+      if (typeof value === 'object' && value !== null && 'start' in value && 'end' in value) {
+        const start = (value as { start: string; end: string }).start
+        const end = (value as { start: string; end: string }).end
         return { displayValue: `${start} 至 ${end}` }
       }
       return { displayValue: String(value) }

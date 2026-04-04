@@ -18,10 +18,13 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
   const formName = ref('未命名表单')
   const formCategory = ref('')
   const accessMode = ref<AccessMode>(AccessMode.AUTHENTICATED)
-  const allowEdit = ref(false)
-  const maxEditCount = ref(0)
+  const allowEdit = ref(true)
+  const maxEditCount = ref(10)
+  const allowRepeatSubmit = ref(true)
+  const maxSubmitCount = ref(0)
   const submitDeadline = ref<string>()
   const flowDefinitionId = ref<number>()
+  const versionTag = ref<string>()
   
   // 字段列表
   const fields = ref<FormField[]>([])
@@ -131,6 +134,8 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
       accessMode: accessMode.value,
       allowEdit: allowEdit.value,
       maxEditCount: maxEditCount.value,
+      allowRepeatSubmit: allowRepeatSubmit.value,
+      maxSubmitCount: maxSubmitCount.value,
       submitDeadline: submitDeadline.value,
       formSchema: {
         version: '1.0.0',
@@ -146,11 +151,14 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     formId.value = config.id
     formName.value = config.name
     formCategory.value = config.category || ''
+    versionTag.value = config.version_tag
 
     accessMode.value = toAccessMode(config.access_mode)
 
-    allowEdit.value = config.allow_edit || false
-    maxEditCount.value = config.max_edit_count || 0
+    allowEdit.value = config.allow_edit ?? true
+    maxEditCount.value = config.max_edit_count ?? 10
+    allowRepeatSubmit.value = (config as any).allow_repeat_submit ?? true
+    maxSubmitCount.value = (config as any).max_submit_count ?? 0
     submitDeadline.value = config.submit_deadline
     flowDefinitionId.value = config.flow_definition_id
     
@@ -174,8 +182,10 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     formName.value = '未命名表单'
     formCategory.value = ''
     accessMode.value = AccessMode.AUTHENTICATED
-    allowEdit.value = false
-    maxEditCount.value = 0
+    allowEdit.value = true
+    maxEditCount.value = 10
+    allowRepeatSubmit.value = true
+    maxSubmitCount.value = 0
     submitDeadline.value = undefined
     flowDefinitionId.value = undefined
     fields.value = []
@@ -204,6 +214,8 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     accessMode,
     allowEdit,
     maxEditCount,
+    allowRepeatSubmit,
+    maxSubmitCount,
     submitDeadline,
     flowDefinitionId,
     fields,

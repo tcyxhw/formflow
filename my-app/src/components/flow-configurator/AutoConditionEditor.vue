@@ -53,12 +53,12 @@
               v-for="(condition, index) in flattenedConditions"
               :key="index"
               class="condition-card"
-              :class="{ 'is-group': condition.node.type === 'GROUP' }"
+              :class="{ 'is-group': condition.node.type === 'GROUP' || condition.isRuleGroup }"
             >
               <div class="condition-number">{{ index + 1 }}</div>
               <div class="condition-info">
                 <div class="condition-text">{{ condition.text }}</div>
-                <div v-if="condition.node.type === 'GROUP'" class="condition-meta">
+                <div v-if="condition.node.type === 'GROUP' || condition.isRuleGroup" class="condition-meta">
                   {{ condition.node.logic === 'AND' ? '全部满足' : '任意满足' }}
                 </div>
               </div>
@@ -106,49 +106,51 @@
         <div class="panel-content">
           <div class="builder-wrapper">
             <div class="builder-container">
-              <ConditionBuilderV2
-                :model-value="builderCondition"
-                :form-schema="formSchema"
-                :form-id="formId"
-                :disabled="disabled"
-                @update:model-value="(val) => (builderCondition = val)"
-              />
-            </div>
+              <div class="builder-content">
+                <ConditionBuilderV2
+                  :model-value="builderCondition"
+                  :form-schema="formSchema"
+                  :form-id="formId"
+                  :disabled="disabled"
+                  @update:model-value="(val) => (builderCondition = val)"
+                />
+              </div>
 
-            <div class="builder-actions">
-              <n-button
-                type="primary"
-                size="large"
-                :disabled="disabled || !canAddCondition"
-                @click="addCondition"
-              >
-                <template #icon>
-                  <n-icon size="18">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="12" y1="5" x2="12" y2="19"/>
-                      <line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                  </n-icon>
-                </template>
-                添加到列表
-              </n-button>
-              <n-button
-                v-if="hasConditions"
-                size="large"
-                :disabled="disabled || !canAddCondition"
-                @click="addConditionGroup"
-              >
-                <template #icon>
-                  <n-icon size="18">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/>
-                      <line x1="12" y1="8" x2="12" y2="16"/>
-                      <line x1="8" y1="12" x2="16" y2="12"/>
-                    </svg>
-                  </n-icon>
-                </template>
-                添加为条件组
-              </n-button>
+              <div class="builder-actions">
+                <n-button
+                  type="primary"
+                  size="large"
+                  :disabled="disabled || !canAddCondition"
+                  @click="addCondition"
+                >
+                  <template #icon>
+                    <n-icon size="18">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                    </n-icon>
+                  </template>
+                  添加到列表
+                </n-button>
+                <n-button
+                  v-if="hasConditions"
+                  size="large"
+                  :disabled="disabled || !canAddCondition"
+                  @click="addConditionGroup"
+                >
+                  <template #icon>
+                    <n-icon size="18">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <line x1="12" y1="8" x2="12" y2="16"/>
+                        <line x1="8" y1="12" x2="16" y2="12"/>
+                      </svg>
+                    </n-icon>
+                  </template>
+                  添加为条件组
+                </n-button>
+              </div>
             </div>
           </div>
         </div>
@@ -228,18 +230,43 @@ const canAddCondition = computed(() => {
 
 // 扁平化条件列表用于展示
 const flattenedConditions = computed(() => {
-  return rootGroup.value.children.map((child, index) => {
+  // 如果根组有多个子规则且使用 AND/OR 逻辑，显示为单个分组
+  const rootChildren = rootGroup.value.children
+  const ruleChildren = rootChildren.filter(c => c.type === 'RULE')
+  const groupChildren = rootChildren.filter(c => c.type === 'GROUP')
+  
+  // 如果有多个规则子项且有逻辑关系，显示为组
+  if (ruleChildren.length > 1 && rootGroup.value.logic) {
+    return [
+      {
+        index: 0,
+        text: ruleChildren.map(rule => formatRuleText(rule)).join(` ${rootGroup.value.logic === 'AND' ? '且' : '或'} `),
+        node: rootGroup.value,
+        isRuleGroup: true,
+      },
+      ...groupChildren.map((child, idx) => ({
+        index: idx + ruleChildren.length,
+        text: formatGroupText(child),
+        node: child,
+        isRuleGroup: false,
+      }))
+    ]
+  }
+  
+  return rootChildren.map((child, index) => {
     if (child.type === 'RULE') {
       return {
         index,
         text: formatRuleText(child),
         node: child,
+        isRuleGroup: false,
       }
     } else {
       return {
         index,
         text: formatGroupText(child),
         node: child,
+        isRuleGroup: false,
       }
     }
   })
@@ -269,6 +296,12 @@ watch(
 )
 
 // 方法
+const getFieldLabel = (fieldKey: string): string => {
+  if (!props.formSchema?.fields) return fieldKey
+  const field = props.formSchema.fields.find(f => f.id === fieldKey || f.key === fieldKey)
+  return field?.label || fieldKey
+}
+
 const formatRuleText = (rule: ConditionRule): string => {
   const operatorMap: Record<string, string> = {
     'EQUALS': '等于',
@@ -289,7 +322,8 @@ const formatRuleText = (rule: ConditionRule): string => {
   }
   const operatorText = operatorMap[rule.operator] || rule.operator
   const valueText = Array.isArray(rule.value) ? rule.value.join(', ') : String(rule.value ?? '')
-  return `${rule.fieldKey} ${operatorText} ${valueText}`
+  const fieldLabel = getFieldLabel(rule.fieldKey)
+  return `${fieldLabel} ${operatorText} ${valueText}`
 }
 
 const formatGroupText = (group: ConditionGroup): string => {
@@ -343,9 +377,30 @@ const addConditionGroup = () => {
 }
 
 const editCondition = (index: number) => {
-  const condition = rootGroup.value.children[index]
-  if (condition) {
-    builderCondition.value = { ...condition }
+  const condition = flattenedConditions.value[index]
+  
+  // 如果是规则组（多个规则合并显示的情况）
+  if (condition.isRuleGroup && condition.node.type === 'GROUP') {
+    // 将所有规则放回构建器
+    const rules = condition.node.children.filter(c => c.type === 'RULE')
+    if (rules.length > 0) {
+      builderCondition.value = {
+        type: 'GROUP',
+        logic: condition.node.logic,
+        children: rules,
+      }
+    }
+    // 删除对应的规则子项（保留非规则子项）
+    const ruleCount = rootGroup.value.children.filter(c => c.type === 'RULE').length
+    rootGroup.value.children = rootGroup.value.children.filter(c => c.type === 'GROUP')
+    emitUpdate()
+    return
+  }
+  
+  // 普通情况
+  const originalCondition = rootGroup.value.children[index]
+  if (originalCondition) {
+    builderCondition.value = { ...originalCondition }
     // 删除原条件
     rootGroup.value.children.splice(index, 1)
     emitUpdate()
@@ -353,7 +408,16 @@ const editCondition = (index: number) => {
 }
 
 const deleteCondition = (index: number) => {
-  rootGroup.value.children.splice(index, 1)
+  const condition = flattenedConditions.value[index]
+  
+  // 如果是规则组（多个规则合并显示的情况）
+  if (condition.isRuleGroup && condition.node.type === 'GROUP') {
+    // 删除所有规则子项
+    rootGroup.value.children = rootGroup.value.children.filter(c => c.type === 'GROUP')
+  } else {
+    // 普通情况：直接删除对应索引的项
+    rootGroup.value.children.splice(index, 1)
+  }
   emitUpdate()
 }
 
@@ -449,11 +513,11 @@ const emitUpdate = () => {
 
 /* 左侧面板：固定宽度 */
 .left-panel {
-  width: 360px;
+  width: 260px;
   flex-shrink: 0;
 }
 
-/* 右侧面板：自适应宽度 */
+/* 右侧面板：自适应宽度，占据更多空间 */
 .right-panel {
   flex: 1;
   min-width: 0;
@@ -602,8 +666,16 @@ const emitUpdate = () => {
   flex: 1;
   background: #f8fafc;
   border-radius: 10px;
-  padding: 16px;
   border: 1px solid #e2e8f0;
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.builder-content {
+  flex: 1;
+  padding: 16px;
   overflow: auto;
   min-height: 0;
 }
@@ -611,10 +683,10 @@ const emitUpdate = () => {
 .builder-actions {
   display: flex;
   gap: 10px;
-  padding: 12px 0 0 0;
+  padding: 12px 16px;
   flex-shrink: 0;
   border-top: 1px solid #e2e8f0;
-  margin-top: 12px;
+  background: #ffffff;
 }
 
 /* 底部操作栏 */

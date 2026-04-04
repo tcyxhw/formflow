@@ -17,6 +17,7 @@ const publicRoutes: RouteRecordRaw[] = [
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
+    props: route => ({ showChangeTenant: route.query.showChangeTenant !== 'false' }),
     meta: { title: '登录' }
   },
   {

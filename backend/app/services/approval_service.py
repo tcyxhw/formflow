@@ -631,8 +631,13 @@ class TaskService:
             raise NotFoundError("流程实例不存在")
 
         task_rows = (
-            db.query(Task, FlowNode.name.label("node_name"))
+            db.query(
+                Task,
+                FlowNode.name.label("node_name"),
+                User.name.label("assignee_name"),
+            )
             .join(FlowNode, FlowNode.id == Task.node_id)
+            .outerjoin(User, User.id == Task.assignee_user_id)
             .filter(
                 Task.process_instance_id == process_instance_id,
                 Task.tenant_id == tenant_id,
@@ -658,6 +663,7 @@ class TaskService:
             TaskService._build_timeline_entry(
                 task=row.Task,
                 node_name=row.node_name,
+                assignee_name=row.assignee_name,
                 logs=log_map.get(row.Task.id),
                 user_map=user_map,
             )
@@ -1017,6 +1023,7 @@ class TaskService:
     def _build_timeline_entry(
         task: Task,
         node_name: str | None,
+        assignee_name: str | None,
         logs: Optional[List[TaskActionLog]],
         user_map: Dict[int, str],
     ) -> TimelineEntry:
@@ -1040,6 +1047,7 @@ class TaskService:
             task_id=task.id,
             node_id=task.node_id,
             node_name=node_name,
+            assignee_name=assignee_name,
             status=TaskStatus(task.status),
             action=task.action,
             actor_user_id=last_action.actor_user_id if last_action else None,

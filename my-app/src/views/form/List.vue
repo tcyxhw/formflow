@@ -391,15 +391,35 @@
     {
       title: '版本',
       key: 'current_version',
-      width: 160,
+      width: 220,
       render: (row) => {
         const publishedVer = row.current_version || 0
         const hasUnpublished = row.has_unpublished_changes
-        return h(NSpace, { align: 'center', size: 6 }, {
+        const flowVer = row.flow_version
+        const hasFlowChanges = row.has_flow_changes
+        const hasFlow = !!row.flow_definition_id
+
+        return h(NSpace, { vertical: true, size: 4 }, {
           default: () => [
-            h('span', { style: { fontSize: '13px', color: '#64748b' } }, `v${publishedVer}`),
-            hasUnpublished
-              ? h(NTag, { type: 'warning', size: 'tiny', bordered: false }, { default: () => '有未发布更改' })
+            h(NSpace, { align: 'center', size: 6 }, {
+              default: () => [
+                h('span', { style: { fontSize: '12px', color: '#64748b' } }, '表单'),
+                h('span', { style: { fontSize: '13px', fontWeight: 500 } }, `v${publishedVer}`),
+                hasUnpublished
+                  ? h(NTag, { type: 'warning', size: 'tiny', bordered: false }, { default: () => '有未发布' })
+                  : null,
+              ],
+            }),
+            hasFlow
+              ? h(NSpace, { align: 'center', size: 6 }, {
+                  default: () => [
+                    h('span', { style: { fontSize: '12px', color: '#64748b' } }, '流程'),
+                    h('span', { style: { fontSize: '13px', fontWeight: 500 } }, `v${flowVer ?? '-'}`),
+                    hasFlowChanges
+                      ? h(NTag, { type: 'warning', size: 'tiny', bordered: false }, { default: () => '有未发布' })
+                      : null,
+                  ],
+                })
               : null,
           ],
         })
@@ -506,9 +526,27 @@
     try {
       loading.value = true
       const res = await formApi.listForms(pendingQuery.value)
-      const list: FormListResponse = res.data
-      tableData.value = list.items
-      pagination.itemCount = list.total
+      console.log('[DEBUG] res structure:', JSON.stringify(res, (k, v) => k === 'data' ? '{...}' : v, 2))
+      
+      // Handle both wrapped and unwrapped response
+      let items: FormResponse[] = []
+      let total = 0
+      
+      if (res.data && typeof res.data === 'object') {
+        if ('items' in res.data) {
+          // Direct: res.data = { items: [], total: N }
+          items = res.data.items || []
+          total = res.data.total || 0
+        } else if ('data' in res.data && res.data.data) {
+          // Wrapped: res.data = { data: { items: [], total: N } }
+          items = res.data.data.items || []
+          total = res.data.data.total || 0
+        }
+      }
+      
+      console.log('[DEBUG] items:', items[0])
+      tableData.value = items
+      pagination.itemCount = total
     } catch (error) {
       message.error(resolveErrorMessage(error, '加载失败'))
     } finally {

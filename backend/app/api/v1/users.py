@@ -654,7 +654,7 @@ async def get_current_user_avatar(
     from app.core.security import decode_token
 
     if not current_user.avatar_url:
-        raise NotFoundError("用户未设置头像")
+        return _default_avatar_response()
 
     avatar_url = current_user.avatar_url
 
@@ -677,7 +677,7 @@ async def get_current_user_avatar(
         storage_path = avatar_url
 
     if not storage_path:
-        raise NotFoundError("头像文件路径无效")
+        return _default_avatar_response()
 
     try:
         file_data = StorageService.get_file_data(storage_path)
@@ -697,6 +697,23 @@ async def get_current_user_avatar(
                 "Content-Disposition": f'inline; filename="avatar_{current_user.id}"'
             }
         )
-    except Exception as e:
-        logger.error(f"获取头像失败: {e}")
-        raise NotFoundError("头像文件不存在")
+    except Exception:
+        return _default_avatar_response()
+
+
+def _default_avatar_response():
+    """返回默认 SVG 头像（灰色人形图标）。"""
+    from fastapi.responses import Response
+
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">'
+        '<rect width="80" height="80" rx="40" fill="#ccc"/>'
+        '<circle cx="40" cy="30" r="14" fill="#fff"/>'
+        '<ellipse cx="40" cy="68" rx="24" ry="18" fill="#fff"/>'
+        '</svg>'
+    )
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

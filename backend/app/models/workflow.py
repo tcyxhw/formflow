@@ -55,6 +55,7 @@ class FlowNode(DBBaseModel):
     auto_approve_cond = Column(JSON, nullable=True, comment="自动通过条件")
     auto_reject_cond = Column(JSON, nullable=True, comment="自动驳回条件")
     auto_sample_ratio = Column(Float, default=0, comment="抽检比例")
+    auto_claim_on_auto_action = Column(Boolean, default=False, comment="自动审批时自动认领")
     next_default_node_id = Column(Integer, nullable=True, comment="默认去向节点ID")
     reject_strategy = Column(String(20), default="TO_START", comment="驳回策略：TO_START/TO_PREVIOUS")
     condition_branches = Column(JSON, nullable=True, comment='条件分支配置：{"branches": [...], "default_target_node_id": ...}')

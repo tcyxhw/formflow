@@ -63,14 +63,24 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   // 当前选中的审批
   const selectedApproval = ref<MyApprovalItem | null>(null)
 
-  // 流程图数据
-  const flowNodes = ref<FlowDiagramNode[]>([])
-  const flowRoutes = ref<FlowDiagramRoute[]>([])
+  // 流程图数据（按 process_instance_id 缓存）
+  const flowDataMap = ref<Map<number, { nodes: FlowDiagramNode[]; routes: FlowDiagramRoute[]; timeline: ProcessTimelineInfo | null }>>(new Map())
   const flowLoading = ref(false)
   const fieldLabels = ref<Record<string, string>>({})
 
-  // 流程轨迹
-  const processTimeline = ref<ProcessTimelineInfo | null>(null)
+  // 获取指定流程实例的流程图数据
+  const getFlowData = (processInstanceId: number | null) => {
+    if (!processInstanceId) return { nodes: [], routes: [], timeline: null }
+    return flowDataMap.value.get(processInstanceId) || { nodes: [], routes: [], timeline: null }
+  }
+
+  // 兼容旧引用（供 FlowDiagram 组件使用）
+  const flowNodes = computed(() => selectedApproval.value?.process_instance_id
+    ? getFlowData(selectedApproval.value.process_instance_id).nodes : [])
+  const flowRoutes = computed(() => selectedApproval.value?.process_instance_id
+    ? getFlowData(selectedApproval.value.process_instance_id).routes : [])
+  const processTimeline = computed(() => selectedApproval.value?.process_instance_id
+    ? getFlowData(selectedApproval.value.process_instance_id).timeline : null)
 
   // 用于取消请求的 AbortController
   let currentFlowRequest: AbortController | null = null
@@ -91,14 +101,13 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     try {
       const res = await getSubmissionList({
         page: 1,
-        page_size: 20,
+        page_size: 100,
         submitter_user_id: authStore.userInfo?.id
       })
 
-      // 筛选出有关联审批流程的提交
+      // 保留所有提交（包括草稿）
       const items = res.data.items || []
       approvalList.value = items
-        .filter(item => item.process_instance_id)
         .map(item => ({
           id: item.id,
           form_id: item.form_id,
@@ -197,12 +206,13 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
         const timelineEntries = timelineRes?.data?.entries || []
 
         // 转换节点数据
-        flowNodes.value = nodes.map((node, index) => {
+        const allStatuses: Array<'pending' | 'processing' | 'completed' | 'rejected'> = []
+        const computedNodes = nodes.map((node: any, index: number) => {
           const nodeId = String(node.id ?? node.temp_id ?? `node-${index}`)
 
-          // 从轨迹中查找节点状态
+          // 从轨迹中查找节点状态（兼容 string/number 类型）
           const timelineEntry = timelineEntries.find(
-            e => String(e.node_id) === nodeId || e.node_name === node.name
+            (e: any) => String(e.node_id) === nodeId || String(e.node_id) === String(node.id) || e.node_name === node.name
           )
 
           let status: 'pending' | 'processing' | 'completed' | 'rejected' = 'pending'
@@ -217,11 +227,12 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
               status = 'processing'
               isClaimed = timelineEntry.status === 'claimed'
             }
-            assigneeName = timelineEntry.actor_name ?? null
+            assigneeName = timelineEntry.assignee_name ?? timelineEntry.actor_name ?? null
             dueAt = timelineEntry.due_at ?? null
           } else if (node.type === 'start') {
             status = 'completed'
           }
+          allStatuses.push(status)
 
           return {
             id: nodeId,
@@ -235,8 +246,19 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
           }
         })
 
+        // 兜底：如果流程运行中但没有节点标记为 processing，将第一个未完成的审批节点标记为进行中
+        if (!allStatuses.includes('processing') && processInstanceId && timelineRes?.data?.state === 'running') {
+          const firstPendingIdx = computedNodes.findIndex(
+            (_n: any, i: number) => allStatuses[i] === 'pending' && computedNodes[i].type !== 'start' && computedNodes[i].type !== 'end'
+          )
+          if (firstPendingIdx >= 0) {
+            computedNodes[firstPendingIdx].status = 'processing'
+            allStatuses[firstPendingIdx] = 'processing'
+          }
+        }
+
         // 转换路由数据
-        flowRoutes.value = routes.map((route, index) => ({
+        const computedRoutes = routes.map((route: any, index: number) => ({
           id: route.id ?? route.temp_id ?? `route-${index}`,
           from_node_id: route.from_node_key,
           to_node_id: route.to_node_key,
@@ -244,14 +266,21 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
           is_default: route.is_default,
           enabled: true
         }))
-      }
 
-      // 保存轨迹信息
-      if (timelineRes?.data) {
-        processTimeline.value = {
+        // 构建时间线数据
+        const computedTimeline: ProcessTimelineInfo | null = timelineRes?.data ? {
           process_instance_id: timelineRes.data.process_instance_id,
           state: timelineRes.data.state,
           entries: timelineRes.data.entries
+        } : null
+
+        // 存入 Map（按 process_instance_id 缓存）
+        if (processInstanceId) {
+          flowDataMap.value.set(processInstanceId, {
+            nodes: computedNodes,
+            routes: computedRoutes,
+            timeline: computedTimeline
+          })
         }
       }
     } catch (error: any) {
@@ -269,16 +298,16 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   // 选择审批
   const selectApproval = async (approval: MyApprovalItem) => {
     selectedApproval.value = approval
-    // 加载流程图数据
-    await loadFlowDiagram(approval.form_id, approval.process_instance_id, approval.flow_definition_id)
+    // 草稿没有流程数据，跳过加载
+    if (approval.process_instance_id) {
+      await loadFlowDiagram(approval.form_id, approval.process_instance_id, approval.flow_definition_id)
+    }
   }
 
   // 清除选择
   const clearSelection = () => {
     selectedApproval.value = null
-    flowNodes.value = []
-    flowRoutes.value = []
-    processTimeline.value = null
+    // 不清除 flowDataMap，数据按 process_instance_id 缓存
   }
 
   /**
@@ -304,17 +333,18 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   }
 
   // 获取流程状态文本
-  const getStateLabel = (state: string | null, isOverdue?: boolean): string => {
+  const getStateLabel = (state: string | null, isOverdue?: boolean, status?: string): string => {
+    if (status === 'draft') return '待通过'
     if (isOverdue) {
-      return '已停止' // 超时显示为已停止
+      return '已停止'
     }
     switch (state) {
       case 'running': return '进行中'
       case 'finished': return '已完成'
       case 'stopped': return '已停止'
-      case 'canceled': return '待提交'  // 撤回后显示为待提交
-      case 'pending_approval': return '暂存待发'  // 暂存待发状态
-      default: return '进行中'
+      case 'canceled': return '待提交'
+      case 'pending_approval': return '暂存待发'
+      default: return '待提交'
     }
   }
 
@@ -328,6 +358,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     flowLoading,
     fieldLabels,
     processTimeline,
+    getFlowData,
     loadMyApprovals,
     loadFlowDiagram,
     selectApproval,

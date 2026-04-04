@@ -134,21 +134,15 @@ class TokenService:
 
     @classmethod
     async def verify_access_token(cls, token: str) -> Optional[Dict[str, Any]]:
-        """验证访问令牌"""
+        """验证访问令牌（纯 JWT，不依赖 Redis）。
+
+        Redis 重启后不影响已有 token 验证，
+        代价是无法即时撤销 access token（需等自然过期，默认 30 分钟）。
+        """
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
 
             if payload.get("type") != "access":
-                return None
-
-            user_id = payload.get("user_id")
-            tenant_id = payload.get("tenant_id")
-            token_id = payload.get("token_id")
-
-            # 通过 TokenCacheService 检查
-            stored_data = await TokenCacheService.get_access_token(tenant_id, user_id, token_id)
-
-            if not stored_data or stored_data.get("token") != token:
                 return None
 
             return payload

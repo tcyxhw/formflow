@@ -107,13 +107,14 @@ class ProcessService:
         if not start_node:
             raise BusinessError("流程缺少可执行节点")
 
-        # 获取提交记录，获取发起人ID
+        # 获取提交记录，获取发起人ID和表单数据
         submission = db.query(Submission).filter(
             Submission.id == submission_id,
             Submission.tenant_id == tenant_id,
         ).first()
         
         initiator_id = submission.submitter_user_id if submission else None
+        form_data = submission.data_jsonb if submission else None
 
         process = ProcessInstance(
             tenant_id=tenant_id,
@@ -122,6 +123,7 @@ class ProcessService:
             submission_id=submission_id,
             flow_definition_id=flow_def.id,
             initiator_id=initiator_id,
+            form_data_snapshot=form_data,
         )
         db.add(process)
         db.flush()
@@ -415,6 +417,12 @@ class ProcessService:
         assignee_user_id, assignee_group_id = AssignmentService.select_assignee(
             node, tenant_id, db, form_data=form_data, initiator_id=initiator_id
         )
+        
+        # 如果节点配置了自动审批时自动认领，则创建任务时直接认领
+        claimed_by = None
+        if node.auto_claim_on_auto_action:
+            claimed_by = SYSTEM_USER_ID
+        
         task = Task(
             tenant_id=tenant_id,
             process_instance_id=process.id,
@@ -422,6 +430,9 @@ class ProcessService:
             assignee_user_id=assignee_user_id,
             assignee_group_id=assignee_group_id,
             due_at=SLAService.calculate_due_at(node.sla_hours),
+            claimed_by=claimed_by,
+            claimed_at=datetime.utcnow() if claimed_by else None,
+            status="claimed" if claimed_by else "open",
         )
         db.add(task)
         return task

@@ -400,13 +400,13 @@ const loadFlowDraft = async (id: number) => {
       if (loadedFormId) {
         try {
           const formDetail = await getFormDetail(loadedFormId)
-          formSchema.value = formDetail.schema_json
+          formSchema.value = formDetail.data.schema_json
           console.log('Form schema loaded successfully:', {
             formId: loadedFormId,
-            hasFields: !!formDetail.schema_json?.fields,
-            fieldsCount: formDetail.schema_json?.fields?.length || 0,
-            fieldsSample: formDetail.schema_json?.fields?.slice(0, 2).map((f: any) => ({ id: f.id, label: f.label })),
-            fullSchema: formDetail.schema_json
+            hasFields: !!formDetail.data.schema_json?.fields,
+            fieldsCount: formDetail.data.schema_json?.fields?.length || 0,
+            fieldsSample: formDetail.data.schema_json?.fields?.slice(0, 2).map((f: any) => ({ id: f.id, label: f.label })),
+            fullSchema: formDetail.data.schema_json
           })
         } catch (formError) {
           console.warn(`Failed to load form schema for form ID ${loadedFormId}:`, formError)

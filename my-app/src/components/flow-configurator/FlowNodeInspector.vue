@@ -197,6 +197,18 @@
           <n-alert v-if="node.auto_approve_enabled" type="info" :bordered="false" style="margin-top: 12px;">
             自动驳回条件优先于自动通过条件判断
           </n-alert>
+
+          <!-- 自动审批时自动认领 -->
+          <n-form-item v-if="node.auto_approve_enabled" label="自动认领" style="margin-top: 12px;">
+            <n-space vertical>
+              <n-switch
+                :value="node.auto_claim_on_auto_action"
+                :disabled="disabled"
+                @update:value="(val) => emitPatch({ auto_claim_on_auto_action: val })"
+              />
+              <span class="field-help">启用后，自动审批的任务将自动认领，不会出现在待办列表</span>
+            </n-space>
+          </n-form-item>
         </template>
 
         <!-- 条件节点配置 -->
@@ -277,7 +289,7 @@
     <n-modal
       v-model:show="showAutoApproveModal"
       preset="card"
-      :style="{ width: '80vw', maxWidth: '1200px' }"
+      :style="{ width: '90vw', maxWidth: '1400px', minHeight: '600px' }"
       :mask-closable="false"
       :closable="false"
       :show-icon="false"
@@ -303,7 +315,7 @@
     <n-modal
       v-model:show="showAutoRejectModal"
       preset="card"
-      :style="{ width: '80vw', maxWidth: '1200px' }"
+      :style="{ width: '90vw', maxWidth: '1400px', minHeight: '600px' }"
       :mask-closable="false"
       :closable="false"
       :show-icon="false"
@@ -566,22 +578,79 @@ const clearAutoRejectCondition = () => {
 const formatConditionPreview = (condition: any): string => {
   if (!condition) return '未设置'
   
+  // 获取字段标签的辅助函数
+  const getFieldLabel = (fieldKey: string): string => {
+    if (!props.formSchema?.fields) return fieldKey
+    const fields = props.formSchema.fields as any[]
+    const field = fields.find((f) => f.id === fieldKey || f.key === fieldKey || f.name === fieldKey)
+    return field?.label || field?.name || field?.key || fieldKey
+  }
+
+  // 操作符映射
+  const operatorMap: Record<string, string> = {
+    '==': '等于', '!=': '不等于', '>': '大于', '>=': '大于等于',
+    '<': '小于', '<=': '小于等于', 'in': '属于',
+  }
+
+  // 格式化单个规则
+  const formatRule = (rule: any): string => {
+    if (!rule) return ''
+    
+    // 直接检查 field 和 operator 属性（旧格式）
+    if (rule.field && rule.operator) {
+      const fieldLabel = getFieldLabel(rule.field)
+      const op = operatorMap[rule.operator] || rule.operator
+      const val = Array.isArray(rule.value) ? rule.value.join(', ') : String(rule.value ?? '')
+      return `${fieldLabel} ${op} ${val}`
+    }
+    
+    // 遍历对象的键值对（JsonLogic格式）
+    const entries = Object.entries(rule)
+    for (let i = 0; i < entries.length; i++) {
+      const entryKey = entries[i][0]
+      const entryValue = entries[i][1]
+      
+      if (entryKey === 'and' || entryKey === 'or') continue
+      
+      if (Array.isArray(entryValue) && entryValue.length >= 2) {
+        const fieldRef = entryValue[0]
+        const fieldVal = entryValue[1]
+        if (fieldRef && typeof fieldRef === 'object' && 'var' in fieldRef) {
+          const fieldLabel = getFieldLabel(fieldRef.var)
+          const op = operatorMap[entryKey] || entryKey
+          const val = Array.isArray(fieldVal) ? fieldVal.join(', ') : String(fieldVal ?? '')
+          return `${fieldLabel} ${op} ${val}`
+        }
+      }
+    }
+    return '已配置条件'
+  }
+  
   if (condition.type === 'GROUP') {
     if (!condition.children || condition.children.length === 0) {
       return '未设置'
     }
-    return `${condition.logic === 'AND' ? '全部满足' : '任意满足'} (${condition.children.length} 个条件)`
+    const logicText = condition.logic === 'AND' ? '且' : '或'
+    const childTexts = condition.children.map((child: any) => {
+      if (child.type === 'RULE') {
+        return formatRule({ '==': [{ 'var': child.fieldKey }, child.value] })
+      }
+      return '子条件组'
+    })
+    return childTexts.join(` ${logicText} `)
   }
   
   if (condition.type === 'RULE') {
-    return `单条件: ${condition.fieldKey}`
+    return formatRule({ '==': [{ 'var': condition.fieldKey }, condition.value] })
   }
   
+  // JsonLogic 格式
   if (condition.and || condition.or) {
-    const logic = condition.and ? 'and' : 'or'
-    const conditions = condition[logic]
+    const isAnd = 'and' in condition
+    const logicText = isAnd ? '且' : '或'
+    const conditions = isAnd ? condition.and : condition.or
     if (Array.isArray(conditions) && conditions.length > 0) {
-      return `${logic === 'and' ? '全部满足' : '任意满足'} (${conditions.length} 个条件)`
+      return conditions.map((c: any) => formatRule(c)).join(` ${logicText} `)
     }
   }
   
@@ -904,7 +973,7 @@ watch(
 
 /* 弹窗内容容器 */
 .modal-body-wrapper {
-  height: 65vh;
-  overflow: hidden;
+  height: 70vh;
+  overflow: auto;
 }
 </style>

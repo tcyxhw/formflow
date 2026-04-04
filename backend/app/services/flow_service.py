@@ -339,6 +339,7 @@ class FlowService:
                 auto_approve_cond=node_data.get("auto_approve_cond") or node_data.get("autoApproveCond"),
                 auto_reject_cond=node_data.get("auto_reject_cond") or node_data.get("autoRejectCond"),
                 auto_sample_ratio=node_data.get("auto_sample_ratio") or node_data.get("autoSampleRatio") or 0.0,
+                auto_claim_on_auto_action=node_data.get("auto_claim_on_auto_action", False) if node_data.get("auto_claim_on_auto_action") is not None else node_data.get("autoClaimOnAutoAction", False),
                 reject_strategy=node_data.get("reject_strategy") or node_data.get("rejectStrategy") or "TO_START",
             )
             db.add(node)

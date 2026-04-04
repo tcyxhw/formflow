@@ -599,7 +599,7 @@ const flowNodes = computed(() => {
         color,
         icon,
         typeLabel: node.type === 'user' ? '审批节点' : (node.type === 'auto' ? '自动处理' : ''),
-        assignee: node.assignee_type ? getAssigneeLabel(node.assignee_type) : ''
+        assignee: node.assignee_name || (node.assignee_type ? getAssigneeLabel(node.assignee_type) : '')
       },
       style: {
         width: `${width}px`,

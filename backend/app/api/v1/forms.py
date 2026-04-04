@@ -281,6 +281,9 @@ async def list_forms(
             item["total_submissions"] = stats["total_submissions"]
             item["draft_version"] = stats.get("draft_version")
             item["has_unpublished_changes"] = stats.get("has_unpublished_changes", False)
+            item["flow_definition_id"] = stats.get("flow_definition_id")
+            item["flow_version"] = stats.get("flow_version")
+            item["has_flow_changes"] = stats.get("has_flow_changes", False)
             items.append(item)
 
         response = FormListResponse(
@@ -517,6 +520,7 @@ async def get_form_detail(
             response_data["ui_schema_json"] = current_version.ui_schema_json
             response_data["logic_json"] = current_version.logic_json
             response_data["current_version"] = current_version.version
+            response_data["version_tag"] = current_version.version_tag
 
         response_data["versions"] = [
             FormVersionResponse.from_orm(v).dict() for v in versions

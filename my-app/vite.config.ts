@@ -37,6 +37,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: env.VITE_API_BASE_URL || 'http://localhost:8000',
           changeOrigin: true,
+          timeout: 120000,  // 代理超时 120 秒，匹配后端 AI 服务超时
         },
       },
     },

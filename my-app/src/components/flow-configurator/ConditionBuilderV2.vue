@@ -687,7 +687,7 @@ watch(
   flex-direction: column;
   gap: 0;
   overflow: auto;
-  max-height: 350px;
+  max-height: 500px;
 }
 
 .preview-section {

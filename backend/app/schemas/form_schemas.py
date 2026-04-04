@@ -72,8 +72,10 @@ class FormCreateRequest(BaseModel):
     category_id: Optional[int] = Field(None, ge=1, description="分类ID")
     access_mode: AccessMode = Field(AccessMode.AUTHENTICATED, description="访问模式")
     submit_deadline: Optional[datetime] = Field(None, description="填写截止时间")
-    allow_edit: bool = Field(False, description="提交后是否可修改")
-    max_edit_count: int = Field(0, ge=0, description="最大修改次数")
+    allow_edit: bool = Field(True, description="提交后是否可修改")
+    max_edit_count: int = Field(10, ge=0, description="最大修改次数")
+    allow_repeat_submit: bool = Field(True, description="允许反复提交")
+    max_submit_count: int = Field(0, ge=0, description="最大提交次数，0表示不限制")
 
     # 表单配置（可选，创建时可以为空）
     form_schema: Optional[FormSchemaBase] = Field(None, description="字段结构")
@@ -95,6 +97,9 @@ class FormUpdateRequest(BaseModel):
     submit_deadline: Optional[datetime] = None
     allow_edit: Optional[bool] = None
     max_edit_count: Optional[int] = Field(None, ge=0)
+    allow_repeat_submit: Optional[bool] = Field(None, description="允许反复提交")
+    max_submit_count: Optional[int] = Field(None, ge=0, description="最大提交次数")
+    version_tag: Optional[str] = Field(None, max_length=50, description="版本标签（如 v1, v1.1）")
 
     form_schema: Optional[FormSchemaBase] = None
     ui_schema: Optional[UISchemaBase] = None
@@ -147,16 +152,20 @@ class FormResponse(BaseModel):
     submit_deadline: Optional[datetime]
     allow_edit: bool
     max_edit_count: int
+    allow_repeat_submit: bool = Field(True, description="允许反复提交")
+    max_submit_count: int = Field(0, description="最大提交次数，0表示不限制")
     flow_definition_id: Optional[int] = Field(None, description="关联流程定义ID")
     created_at: datetime
     updated_at: datetime
 
     # 关联数据（可选）
+    version_tag: Optional[str] = Field(None, description="版本标签（如 v1, v1.1）")
     current_version: Optional[int] = Field(None, description="当前发布版本号")
     total_submissions: Optional[int] = Field(None, description="提交总数")
     draft_version: Optional[int] = Field(None, description="草稿版本号（存在时为 0）")
     has_unpublished_changes: Optional[bool] = Field(None, description="是否有未发布的表单更改")
     has_flow_changes: Optional[bool] = Field(None, description="是否有未发布的审批流程更改")
+    flow_version: Optional[str] = Field(None, description="审批流程版本号")
 
     class Config:
         from_attributes = True

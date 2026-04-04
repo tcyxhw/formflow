@@ -123,8 +123,29 @@ export const updateUser = (userId: number, data: {
 export const changePassword = (userId: number, data: {
   old_password: string
   new_password: string
-}): Promise<Response<{ success: boolean }>> => {
+}): Promise<Response<any>> => {
   return request.post(`/api/v1/users/${userId}/change-password`, data)
+}
+
+/**
+ * 更新用户扩展信息
+ * PUT /api/v1/users/{user_id}/profile
+ * 
+ * @param userId 用户ID
+ * @param data 扩展信息
+ * @returns 更新后的用户扩展信息
+ */
+export const updateUserProfile = (userId: number, data: {
+  identity_type?: 'student' | 'teacher' | 'admin'
+  identity_no?: string
+  entry_year?: number
+  grade?: string
+  major?: string
+  title?: string
+  research_area?: string
+  office?: string
+}): Promise<Response<any>> => {
+  return request.put(`/api/v1/users/${userId}/profile`, data)
 }
 
 /**

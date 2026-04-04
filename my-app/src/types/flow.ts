@@ -73,6 +73,8 @@ export interface FlowNodeConfig {
   auto_reject_cond?: JsonLogicExpression | null
   /** 抽检比例 */
   auto_sample_ratio: number
+  /** 自动审批时自动认领 */
+  auto_claim_on_auto_action: boolean
   /** 驳回策略 */
   reject_strategy: RejectStrategy
   /** 条件分支配置（CONDITION 节点使用） */

@@ -155,6 +155,36 @@ export const startApproval = (
   return request.post(`${BASE_PATH}/${submissionId}/start-approval`)
 }
 
+export const batchImport = (
+  formId: number,
+  file: File
+): Promise<Response<{ created: number; items: Array<{ id: number; row: number }> }>> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('form_id', String(formId))
+  return request.post(`${BASE_PATH}/batch-import`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+export const batchSubmit = (
+  submissionIds: number[]
+): Promise<Response<{ total: number; success: number; items: Array<{ id: number; success: boolean; error?: string }> }>> => {
+  return request.post(`${BASE_PATH}/batch-submit`, { submission_ids: submissionIds })
+}
+
+export const batchApprove = (
+  submissionIds: number[]
+): Promise<Response<{ total: number; success: number; items: Array<{ id: number; success: boolean; error?: string }> }>> => {
+  return request.post(`${BASE_PATH}/batch-approve`, { submission_ids: submissionIds })
+}
+
+export const downloadImportTemplate = (formId: number): void => {
+  const token = localStorage.getItem('access_token')
+  const url = `/api/v1/forms/${formId}/import-template?token=${encodeURIComponent(token || '')}`
+  window.open(url, '_blank')
+}
+
 export default {
   createSubmission,
   updateSubmission,

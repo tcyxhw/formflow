@@ -27,6 +27,18 @@
             <n-descriptions-item label="手机号">
               {{ userInfo?.phone || '-' }}
             </n-descriptions-item>
+            <n-descriptions-item label="部门">
+              {{ userInfo?.department?.name || '-' }}
+            </n-descriptions-item>
+            <n-descriptions-item label="岗位">
+              {{ formatPositions(userInfo?.positions) }}
+            </n-descriptions-item>
+            <n-descriptions-item label="角色">
+              {{ formatRoles(userInfo?.roles) }}
+            </n-descriptions-item>
+            <n-descriptions-item label="学号/工号">
+              {{ userInfo?.profile?.identity_no || '-' }}
+            </n-descriptions-item>
             <n-descriptions-item label="所属租户">
               {{ userInfo?.tenant_id || '-' }}
             </n-descriptions-item>
@@ -119,6 +131,12 @@
         <n-form-item label="手机号" path="phone">
           <n-input v-model:value="editForm.phone" placeholder="请输入手机号" />
         </n-form-item>
+        <n-form-item label="身份角色" path="identity_type">
+          <n-select v-model:value="editForm.identity_type" placeholder="请选择身份角色" :options="identityTypeOptions" />
+        </n-form-item>
+        <n-form-item label="学号/工号" path="identity_no">
+          <n-input v-model:value="editForm.identity_no" placeholder="请输入学号或工号" />
+        </n-form-item>
       </n-form>
     </n-modal>
 
@@ -156,7 +174,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
-import { getCurrentUser, updateUser, changePassword } from '@/api/auth'
+import { getCurrentUser, updateUser, changePassword, updateUserProfile } from '@/api/auth'
 import { uploadAttachment } from '@/api/attachment'
 import type { UserInfo } from '@/types/user'
 
@@ -178,8 +196,16 @@ const showPasswordModal = ref(false)
 const editForm = reactive({
   name: '',
   email: '',
-  phone: ''
+  phone: '',
+  identity_type: null as 'student' | 'teacher' | 'admin' | null,
+  identity_no: ''
 })
+
+const identityTypeOptions = [
+  { label: '学生', value: 'student' },
+  { label: '教师', value: 'teacher' },
+  { label: '管理员', value: 'admin' }
+]
 
 const passwordForm = reactive({
   old_password: '',
@@ -208,6 +234,35 @@ const passwordRules = {
   ]
 }
 
+// 身份类型映射
+const getIdentityTypeText = (type: string | undefined): string => {
+  const map: Record<string, string> = {
+    'student': '学生',
+    'teacher': '教师',
+    'admin': '管理员'
+  }
+  return type ? map[type] || type : ''
+}
+
+const getIdentityTypeTag = (type: string | undefined): 'success' | 'warning' | 'info' => {
+  const map: Record<string, 'success' | 'warning' | 'info'> = {
+    'student': 'success',
+    'teacher': 'warning',
+    'admin': 'info'
+  }
+  return map[type || ''] || 'info'
+}
+
+const formatRoles = (roles?: string[]): string => {
+  if (!roles || roles.length === 0) return '无'
+  return roles.join('、')
+}
+
+const formatPositions = (positions?: string[]): string => {
+  if (!positions || positions.length === 0) return '-'
+  return positions.join('、')
+}
+
 const userInitials = computed(() => {
   if (!userInfo.value?.name) return '?'
   const clean = userInfo.value.name.replace(/\s+/g, '')
@@ -215,11 +270,8 @@ const userInitials = computed(() => {
 })
 
 const userAvatarUrl = computed(() => {
-  const avatarUrl = userInfo.value?.avatar_url
-  if (!avatarUrl) return undefined
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
   const token = authStore.accessToken || localStorage.getItem('access_token')
-  return `${apiBase}/api/v1/users/me/avatar?token=${encodeURIComponent(token || '')}`
+  return `/api/v1/users/me/avatar?token=${encodeURIComponent(token || '')}`
 })
 
 const avatarInputRef = ref<HTMLInputElement | null>(null)
@@ -272,6 +324,11 @@ const loadUserInfo = async () => {
     editForm.name = res.data.name || ''
     editForm.email = res.data.email || ''
     editForm.phone = res.data.phone || ''
+    // 加载扩展信息
+    if (res.data.profile) {
+      editForm.identity_type = res.data.profile.identity_type || null
+      editForm.identity_no = res.data.profile.identity_no || ''
+    }
     // 确保 avatar_url 被正确加载
     if (res.data.avatar_url) {
       userInfo.value.avatar_url = res.data.avatar_url
@@ -306,6 +363,11 @@ const handleSaveProfile = async () => {
       name: editForm.name,
       email: editForm.email || undefined,
       phone: editForm.phone || undefined
+    })
+    // 保存扩展信息
+    await updateUserProfile(userInfo.value.id, {
+      identity_type: editForm.identity_type || undefined,
+      identity_no: editForm.identity_no || undefined
     })
     message.success('保存成功')
     showEditModal.value = false
@@ -413,5 +475,10 @@ onMounted(() => {
 .avatar-account {
   font-size: 14px;
   color: #6b7282;
+}
+
+.no-identity {
+  color: #999;
+  font-size: 12px;
 }
 </style>

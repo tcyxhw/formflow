@@ -152,6 +152,7 @@ class TimelineEntry(BaseModel):
     task_id: Optional[int]
     node_id: Optional[int]
     node_name: Optional[str]
+    assignee_name: Optional[str] = Field(default=None, description="审批人名称")
     status: Optional[TaskStatus]
     action: Optional[str]
     actor_user_id: Optional[int]

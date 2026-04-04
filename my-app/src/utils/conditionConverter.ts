@@ -1,83 +1,87 @@
 import type { ConditionNode, ConditionRule, ConditionGroup, Operator } from '@/types/condition'
 
 export interface RouteRule {
-  logic?: 'and' | 'or'
-  rules?: RouteRule[]
-  field?: string
-  operator?: string
-  value?: any
+  [key: string]: any
 }
 
-const OPERATOR_TO_BACKEND: Record<Operator, string> = {
-  'EQUALS': 'equals',
-  'NOT_EQUALS': 'not_equals',
-  'GREATER_THAN': 'gt',
-  'GREATER_EQUAL': 'gte',
-  'LESS_THAN': 'lt',
-  'LESS_EQUAL': 'lte',
+const OPERATOR_TO_JSONLOGIC: Record<Operator, string> = {
+  'EQUALS': '==',
+  'NOT_EQUALS': '!=',
+  'GREATER_THAN': '>',
+  'GREATER_EQUAL': '>=',
+  'LESS_THAN': '<',
+  'LESS_EQUAL': '<=',
   'BETWEEN': 'between',
-  'CONTAINS': 'contains',
-  'NOT_CONTAINS': 'not_contains',
+  'CONTAINS': 'in',
+  'NOT_CONTAINS': '!',
   'IN': 'in',
-  'NOT_IN': 'not_in',
-  'HAS_ANY': 'has_any',
-  'HAS_ALL': 'has_all',
-  'IS_EMPTY': 'is_empty',
-  'IS_NOT_EMPTY': 'is_not_empty',
-  'DATE_BEFORE_NOW': 'lt',
-  'DATE_AFTER_NOW': 'gt',
+  'NOT_IN': '!',
+  'HAS_ANY': 'or',
+  'HAS_ALL': 'and',
+  'IS_EMPTY': '==',
+  'IS_NOT_EMPTY': '!=',
+  'DATE_BEFORE_NOW': '<',
+  'DATE_AFTER_NOW': '>',
 }
 
-const BACKEND_TO_OPERATOR: Record<string, Operator> = {
-  'equals': 'EQUALS',
-  'not_equals': 'NOT_EQUALS',
-  'gt': 'GREATER_THAN',
-  'gte': 'GREATER_EQUAL',
-  'lt': 'LESS_THAN',
-  'lte': 'LESS_EQUAL',
-  'between': 'BETWEEN',
-  'contains': 'CONTAINS',
-  'not_contains': 'NOT_CONTAINS',
+const JSONLOGIC_TO_OPERATOR: Record<string, Operator> = {
+  '==': 'EQUALS',
+  '!=': 'NOT_EQUALS',
+  '>': 'GREATER_THAN',
+  '>=': 'GREATER_EQUAL',
+  '<': 'LESS_THAN',
+  '<=': 'LESS_EQUAL',
   'in': 'IN',
-  'not_in': 'NOT_IN',
-  'has_any': 'HAS_ANY',
-  'has_all': 'HAS_ALL',
-  'is_empty': 'IS_EMPTY',
-  'is_not_empty': 'IS_NOT_EMPTY',
 }
 
 export function conditionNodeToRouteRule(node: ConditionNode | null): RouteRule | null {
   if (!node) return null
 
   if (node.type === 'RULE') {
-    return ruleToRouteRule(node)
+    return ruleToJsonLogic(node)
   }
 
   if (node.type === 'GROUP') {
-    return groupToRouteRule(node)
+    return groupToJsonLogic(node)
   }
 
   return null
 }
 
-function ruleToRouteRule(rule: ConditionRule): RouteRule {
-  const backendOperator = OPERATOR_TO_BACKEND[rule.operator] || 'equals'
+function ruleToJsonLogic(rule: ConditionRule): RouteRule {
+  const jsonLogicOperator = OPERATOR_TO_JSONLOGIC[rule.operator] || '=='
   
-  return {
-    field: rule.fieldKey,
-    operator: backendOperator,
-    value: rule.value,
+  // 处理特殊操作符
+  if (rule.operator === 'IS_EMPTY') {
+    return { '==': [{ 'var': rule.fieldKey }, ''] }
   }
+  if (rule.operator === 'IS_NOT_EMPTY') {
+    return { '!=': [{ 'var': rule.fieldKey }, ''] }
+  }
+  if (rule.operator === 'NOT_CONTAINS') {
+    return { '!': [{ 'in': [rule.value, { 'var': rule.fieldKey }] }] }
+  }
+  if (rule.operator === 'NOT_IN') {
+    return { '!': [{ 'in': [{ 'var': rule.fieldKey }, rule.value] }] }
+  }
+  if (rule.operator === 'HAS_ANY') {
+    return { 'or': rule.value.map((v: any) => ({ 'in': [v, { 'var': rule.fieldKey }] })) }
+  }
+  if (rule.operator === 'HAS_ALL') {
+    return { 'and': rule.value.map((v: any) => ({ 'in': [v, { 'var': rule.fieldKey }] })) }
+  }
+  
+  return { [jsonLogicOperator]: [{ 'var': rule.fieldKey }, rule.value] }
 }
 
-function groupToRouteRule(group: ConditionGroup): RouteRule {
+function groupToJsonLogic(group: ConditionGroup): RouteRule {
   if (!group.children || group.children.length === 0) {
     return {}
   }
 
   const rules = group.children
     .map(child => conditionNodeToRouteRule(child))
-    .filter((rule): rule is RouteRule => rule !== null)
+    .filter((rule): rule is RouteRule => rule !== null && Object.keys(rule).length > 0)
 
   if (rules.length === 0) {
     return {}
@@ -87,52 +91,65 @@ function groupToRouteRule(group: ConditionGroup): RouteRule {
     return rules[0]
   }
 
-  return {
-    logic: group.logic.toLowerCase() as 'and' | 'or',
-    rules,
-  }
+  const logicKey = group.logic === 'AND' ? 'and' : 'or'
+  return { [logicKey]: rules }
 }
 
 export function routeRuleToConditionNode(rule: RouteRule | null): ConditionNode | null {
-  if (!rule) return null
+  if (!rule || Object.keys(rule).length === 0) return null
 
-  if (rule.rules && rule.rules.length > 0) {
+  // 处理 and/or
+  if (rule.and || rule.or) {
     return routeRuleToConditionGroup(rule)
   }
 
-  if (rule.field && rule.operator) {
-    return routeRuleToConditionRule(rule)
+  // 处理单个规则
+  return routeRuleToConditionRule(rule)
+}
+
+function routeRuleToConditionRule(rule: RouteRule): ConditionNode | null {
+  // 找到操作符和值
+  for (const [op, value] of Object.entries(rule)) {
+    if (op === 'and' || op === 'or') continue
+    
+    const values = Array.isArray(value) ? value : []
+    if (values.length >= 2) {
+      const fieldRef = values[0]
+      const fieldValue = values[1]
+      
+      if (fieldRef && typeof fieldRef === 'object' && 'var' in fieldRef) {
+        const operator = JSONLOGIC_TO_OPERATOR[op] || 'EQUALS'
+        return {
+          type: 'RULE',
+          fieldKey: fieldRef.var,
+          fieldType: 'TEXT',
+          operator,
+          value: fieldValue,
+        }
+      }
+    }
   }
 
   return null
 }
 
-function routeRuleToConditionRule(rule: RouteRule): ConditionRule | null {
-  if (!rule.field || !rule.operator) return null
-
-  const operator = BACKEND_TO_OPERATOR[rule.operator] || 'EQUALS'
-
-  return {
-    type: 'RULE',
-    fieldKey: rule.field,
-    fieldType: 'TEXT',
-    operator,
-    value: rule.value,
+function routeRuleToConditionGroup(rule: RouteRule): ConditionNode | null {
+  const isAnd = 'and' in rule
+  const conditions = isAnd ? rule.and : rule.or
+  
+  if (!conditions || !Array.isArray(conditions) || conditions.length === 0) {
+    return null
   }
-}
 
-function routeRuleToConditionGroup(rule: RouteRule): ConditionGroup | null {
-  if (!rule.rules || rule.rules.length === 0) return null
-
-  const children = rule.rules
-    .map(r => routeRuleToConditionNode(r))
+  const children = conditions
+    .map(c => routeRuleToConditionNode(c))
     .filter((node): node is ConditionNode => node !== null)
 
   if (children.length === 0) return null
 
   return {
     type: 'GROUP',
-    logic: (rule.logic?.toUpperCase() as 'AND' | 'OR') || 'AND',
+    logic: isAnd ? 'AND' : 'OR',
     children,
   }
 }

@@ -378,11 +378,8 @@ const isLoggedIn = computed(() => authStore.isLoggedIn)
 const userDisplayName = computed(() => authStore.userInfo?.name || authStore.userInfo?.account || 'FormFlow 用户')
 const userAvatarUrl = computed(() => {
   if (!isLoggedIn.value) return null
-  const avatarUrl = authStore.userInfo?.avatar_url
-  if (!avatarUrl) return null
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
   const token = authStore.accessToken || localStorage.getItem('access_token')
-  return `${apiBase}/api/v1/users/me/avatar?token=${encodeURIComponent(token || '')}`
+  return `/api/v1/users/me/avatar?token=${encodeURIComponent(token || '')}`
 })
 const userInitials = computed(() => {
   if (!isLoggedIn.value) return ''

@@ -66,6 +66,8 @@ export interface UserInfo extends UserResponse {
     name: string
     type: string
   }
+  roles?: string[]  // 系统角色（后端返回字符串数组）
+  positions?: string[]  // 岗位（后端返回字符串数组）
   permissions?: string[]    // 权限列表
 }
 

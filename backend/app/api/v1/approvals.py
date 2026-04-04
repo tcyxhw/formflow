@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_tenant_id, get_current_user
 from app.core.database import get_db
+from app.core.exceptions import BusinessError
 from app.core.response import success_response
 from app.models.user import User
 from app.schemas.approval_schemas import (
@@ -368,23 +369,30 @@ async def cancel_task_by_submission(
     """
     from app.models.workflow import ProcessInstance, Task
 
-    # 根据 submission_id 查找对应的 process_instance
+    # 根据 submission_id 查找对应的 process_instance（取最近一条运行中的）
     process_instance = db.query(ProcessInstance).filter(
         ProcessInstance.submission_id == submission_id,
-        ProcessInstance.tenant_id == tenant_id
-    ).first()
+        ProcessInstance.tenant_id == tenant_id,
+        ProcessInstance.state == "running",
+    ).order_by(ProcessInstance.id.desc()).first()
 
     if not process_instance:
         raise BusinessError("未找到关联的审批流程")
 
-    # 查找该流程实例下的 open 状态任务
+    # 优先查找 open 状态任务；若无则取 claimed 状态（cancel_task 会给出准确错误）
     task = db.query(Task).filter(
         Task.process_instance_id == process_instance.id,
-        Task.status == "open"
+        Task.status == "open",
     ).first()
 
     if not task:
-        raise BusinessError("任务不存在或已被处理")
+        task = db.query(Task).filter(
+            Task.process_instance_id == process_instance.id,
+            Task.status == "claimed",
+        ).first()
+
+    if not task:
+        raise BusinessError("未找到可撤回的任务")
 
     # 调用 cancel_task 服务
     task_response = TaskService.cancel_task(task.id, tenant_id, current_user, db)

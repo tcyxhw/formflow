@@ -56,7 +56,9 @@ class FormService:
             status=FormStatus.DRAFT.value,
             submit_deadline=request.submit_deadline,
             allow_edit=request.allow_edit,
-            max_edit_count=request.max_edit_count
+            max_edit_count=request.max_edit_count,
+            allow_repeat_submit=request.allow_repeat_submit,
+            max_submit_count=request.max_submit_count,
         )
 
         db.add(form)
@@ -116,6 +118,10 @@ class FormService:
             form.allow_edit = request.allow_edit
         if request.max_edit_count is not None:
             form.max_edit_count = request.max_edit_count
+        if request.allow_repeat_submit is not None:
+            form.allow_repeat_submit = request.allow_repeat_submit
+        if request.max_submit_count is not None:
+            form.max_submit_count = request.max_submit_count
 
         # ✅ 修改配置：始终允许更新草稿版本（不管表单状态）
         if request.form_schema or request.ui_schema or request.logic_json:
@@ -169,6 +175,8 @@ class FormService:
                 draft_version.ui_schema_json = request.ui_schema.model_dump()
             if request.logic_json:
                 draft_version.logic_json = request.logic_json.model_dump()
+            if request.version_tag:
+                draft_version.version_tag = request.version_tag
 
         db.commit()
         db.refresh(form)
@@ -634,9 +642,13 @@ class FormService:
                 "current_version": 当前发布版本号,
                 "draft_version": 草稿版本号（存在时为 0）,
                 "has_unpublished_changes": 是否有未发布的表单更改,
+                "flow_definition_id": 关联的流程定义ID,
+                "flow_version": 当前流程版本号,
+                "has_flow_changes": 是否有未发布的流程更改,
             }
         """
         from app.models.form import Submission
+        from app.models.workflow import FlowDefinition
 
         form = FormService.get_form_by_id(form_id, tenant_id, db)
 
@@ -678,12 +690,64 @@ class FormService:
                     or draft_version.logic_json != latest_published.logic_json
                 )
 
+        # 审批流程版本信息
+        flow_definition_id = form.flow_definition_id
+        flow_version = None
+        has_flow_changes = False
+
+        if flow_definition_id:
+            from app.models.workflow import FlowSnapshot, FlowDraft as FlowDraftModel
+
+            # 查询流程定义
+            flow_def = db.query(FlowDefinition).filter(
+                FlowDefinition.id == flow_definition_id,
+            ).first()
+
+            if flow_def:
+                # 优先使用 active_snapshot 的 version_tag（如 "1.3"）
+                flow_version = None
+                if flow_def.active_snapshot_id:
+                    active_snapshot = db.query(FlowSnapshot).filter(
+                        FlowSnapshot.id == flow_def.active_snapshot_id
+                    ).first()
+                    if active_snapshot and active_snapshot.version_tag:
+                        flow_version = active_snapshot.version_tag
+
+                # 如果没有 active_snapshot，使用最新快照的 version_tag
+                if not flow_version:
+                    latest_snapshot = db.query(FlowSnapshot).filter(
+                        FlowSnapshot.flow_definition_id == flow_definition_id,
+                    ).order_by(FlowSnapshot.id.desc()).first()
+                    if latest_snapshot and latest_snapshot.version_tag:
+                        flow_version = latest_snapshot.version_tag
+
+                # 检查是否有未发布的流程更改：草稿存在且 last_snapshot_id 不是最新的快照
+                draft = db.query(FlowDraftModel).filter(
+                    FlowDraftModel.flow_definition_id == flow_definition_id,
+                ).first()
+
+                if draft and draft.config_json:
+                    # 有草稿内容，检查是否有比 last_snapshot_id 更新的快照
+                    if draft.last_snapshot_id:
+                        newer_snapshot = db.query(FlowSnapshot).filter(
+                            FlowSnapshot.flow_definition_id == flow_definition_id,
+                            FlowSnapshot.id > draft.last_snapshot_id,
+                        ).first()
+                        if newer_snapshot:
+                            has_flow_changes = True
+                    elif flow_def.version > 0:
+                        # 草稿没有关联快照但流程已发布过，说明有未发布更改
+                        has_flow_changes = True
+
         return {
             "total_submissions": total_submissions or 0,
             "total_versions": total_versions or 0,
             "current_version": current_version,
             "draft_version": 0 if draft_version else None,
             "has_unpublished_changes": has_unpublished_changes,
+            "flow_definition_id": flow_definition_id,
+            "flow_version": flow_version,
+            "has_flow_changes": has_flow_changes,
         }
 
     @staticmethod
@@ -760,7 +824,9 @@ class FormService:
             status=FormStatus.DRAFT.value,
             submit_deadline=source_form.submit_deadline,
             allow_edit=source_form.allow_edit,
-            max_edit_count=source_form.max_edit_count
+            max_edit_count=source_form.max_edit_count,
+            allow_repeat_submit=getattr(source_form, 'allow_repeat_submit', True),
+            max_submit_count=getattr(source_form, 'max_submit_count', 0),
         )
         db.add(new_form)
         db.flush()

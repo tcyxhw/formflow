@@ -77,10 +77,19 @@ class AIService:
 
         try:
             # ========== 3. 初始化客户端 ==========
-            # ✅ 修改：添加超时配置
+            # ✅ 修改：使用 httpx.Timeout 明确设置所有超时参数
+            import httpx
+            timeout_config = httpx.Timeout(
+                timeout=float(settings.GLM_TIMEOUT),
+                connect=30.0,
+                read=float(settings.GLM_TIMEOUT),
+                write=10.0,
+                pool=10.0
+            )
             client = ZhipuAiClient(
                 api_key=settings.GLM_API_KEY,
-                timeout=settings.GLM_TIMEOUT  # 设置超时时间
+                timeout=timeout_config,
+                max_retries=0,  # 禁用 SDK 内部重试，避免 429 时反复消耗配额
             )
             logger.info(
                 f"[AI生成] 初始化客户端成功，model={settings.GLM_MODEL}, "
@@ -146,8 +155,12 @@ class AIService:
         except BusinessError:
             raise
         except Exception as e:
+            error_text = str(e)
+            if "429" in error_text or "rate" in error_text.lower() or "速率限制" in error_text:
+                logger.warning(f"[AI生成] GLM API 速率限制: {error_text}")
+                raise BusinessError("AI 服务请求过于频繁，请稍后再试")
             logger.error(f"[AI生成] 未知错误: {e}", exc_info=True)
-            raise BusinessError(f"AI 生成失败: {str(e)}")
+            raise BusinessError(f"AI 生成失败: {error_text}")
 
     @staticmethod
     def _build_prompt(user_prompt: str) -> str:

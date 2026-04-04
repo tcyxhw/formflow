@@ -309,15 +309,24 @@ const loadingSubmissions = ref(false)
 const submissionsError = ref<string | null>(null)
 const submissionKeyword = ref('')
 
-// 填写记录筛选后的列表
+// 填写记录筛选后的列表（根据选中的表单和关键词筛选）
 const filteredSubmissions = computed(() => {
-  if (!submissionKeyword.value) {
-    return mySubmissions.value
+  let list = mySubmissions.value
+  
+  // 根据选中的表单筛选
+  if (selectedFormId.value) {
+    list = list.filter(submission => submission.form_id === selectedFormId.value)
   }
-  const keyword = submissionKeyword.value.toLowerCase()
-  return mySubmissions.value.filter(submission =>
-    submission.form_name.toLowerCase().includes(keyword)
-  )
+  
+  // 根据关键词筛选
+  if (submissionKeyword.value) {
+    const keyword = submissionKeyword.value.toLowerCase()
+    list = list.filter(submission =>
+      submission.form_name.toLowerCase().includes(keyword)
+    )
+  }
+  
+  return list
 })
 
 // 筛选条件
@@ -573,11 +582,25 @@ onMounted(() => {
 
 <style scoped>
 .fill-center {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 32px 24px;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  height: 100vh;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 100vh;
+  overflow: hidden;
+}
+
+.left-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: white;
+  border-right: 1px solid #e2e8f0;
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 页面标题 */
@@ -1289,16 +1312,7 @@ onMounted(() => {
   }
 }
 
-/* 新的左右布局样式 */
-.fill-center {
-  display: grid;
-  grid-template-columns: 380px 1fr;
-  min-height: 100vh;
-  background: #f8fafc;
-  margin: 0;
-  padding: 0;
-  max-width: none;
-}
+/* 新的左右布局样式 - 使用顶部的 flex 布局 */
 
 /* 左侧边栏 */
 .left-sidebar {

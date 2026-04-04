@@ -25,6 +25,8 @@ export interface FormConfig {
   submitDeadline?: string
   allowEdit: boolean
   maxEditCount: number
+  allowRepeatSubmit?: boolean
+  maxSubmitCount?: number
   formSchema: FormSchema
   uiSchema: UISchema
   logicSchema: LogicSchema
@@ -38,6 +40,8 @@ export interface FormCreateRequest {
   submit_deadline?: string
   allow_edit: boolean
   max_edit_count: number
+  allow_repeat_submit?: boolean
+  max_submit_count?: number
   form_schema?: FormSchema
   ui_schema?: UISchema
   logic_schema?: LogicSchema
@@ -56,6 +60,9 @@ export interface FormResponse {
   submit_deadline?: string
   allow_edit: boolean
   max_edit_count: number
+  allow_repeat_submit?: boolean
+  max_submit_count?: number
+  version_tag?: string
   current_version?: number
   total_submissions?: number
   flow_definition_id?: number
@@ -64,6 +71,8 @@ export interface FormResponse {
   // 版本对比相关
   draft_version?: number | null
   has_unpublished_changes?: boolean
+  // 审批流程版本相关
+  flow_version?: string | number | null
   has_flow_changes?: boolean
   // 前端计算字段，用于控制操作按钮显示
   can_manage?: boolean

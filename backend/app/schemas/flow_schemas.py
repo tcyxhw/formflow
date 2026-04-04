@@ -108,6 +108,7 @@ class FlowNodeConfig(BaseModel):
     auto_approve_cond: Optional[JsonLogicExpression] = Field(None, description="自动通过条件")
     auto_reject_cond: Optional[JsonLogicExpression] = Field(None, description="自动驳回条件")
     auto_sample_ratio: float = Field(0.0, ge=0.0, le=1.0, description="抽检比例")
+    auto_claim_on_auto_action: bool = Field(False, description="自动审批时自动认领")
     reject_strategy: RejectStrategy = Field(RejectStrategy.TO_START, description="驳回策略")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="扩展元数据")
 

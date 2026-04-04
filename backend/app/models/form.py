@@ -25,8 +25,10 @@ class Form(DBBaseModel):
     owner_user_id = Column(Integer, ForeignKey("user.id"), nullable=False, comment="创建者ID")
     status = Column(String(20), default="draft", comment="状态：draft/published/archived")
     submit_deadline = Column(DateTime, nullable=True, comment="填写截止时间")
-    allow_edit = Column(Boolean, default=False, comment="提交后是否可修改")
-    max_edit_count = Column(Integer, default=0, comment="最大修改次数")
+    allow_edit = Column(Boolean, default=True, comment="提交后是否可修改")
+    max_edit_count = Column(Integer, default=10, comment="最大修改次数")
+    allow_repeat_submit = Column(Boolean, default=True, comment="允许反复提交")
+    max_submit_count = Column(Integer, default=0, comment="最大提交次数，0表示不限制")
     flow_definition_id = Column(Integer, ForeignKey("flow_definition.id"), nullable=True, comment="关联流程定义ID")
 
     # 关系
@@ -43,6 +45,7 @@ class FormVersion(DBBaseModel):
 
     form_id = Column(Integer, ForeignKey("form.id"), nullable=False)
     version = Column(Integer, nullable=False, comment="版本号")
+    version_tag = Column(String(50), nullable=True, comment="版本标签（如 v1, v1.1）")
     schema_json = Column(JSONB, nullable=False, comment="字段结构")
     ui_schema_json = Column(JSONB, nullable=True, comment="界面布局")
     logic_json = Column(JSONB, nullable=True, comment="联动逻辑")

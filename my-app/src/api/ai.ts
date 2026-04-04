@@ -43,7 +43,9 @@ const AI_BASE_PATH = '/api/v1/ai'
 export const generateFormByAI = (
   data: AIFormGenerateRequest
 ): Promise<Response<AIFormGenerateResponse>> => {
-  return request.post(`${AI_BASE_PATH}/generate-form`, data)
+  return request.post(`${AI_BASE_PATH}/generate-form`, data, {
+    timeout: 130000  // AI 生成任务需要较长时间，设置 130 秒超时（匹配后端 asyncio 超时）
+  })
 }
 
 /**

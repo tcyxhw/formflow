@@ -3,26 +3,26 @@
     <!-- 页面头部 -->
     <header class="page-header">
       <div class="header-content">
-        <div class="header-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
-        </div>
         <div class="header-text">
           <h1>我的审批</h1>
           <p class="subtitle">查看我发起的审批进度与详情</p>
         </div>
         <div class="header-actions">
-          <n-button @click="goHome" quaternary class="home-btn">
+          <n-button @click="showImportModal = true" type="primary" ghost>
             <template #icon>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                <polyline points="9 22 9 12 15 12 15 22"></polyline>
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </template>
+            导入数据
+          </n-button>
+          <n-button v-if="selectedDraftIds.length > 0" @click="handleBatchApprove" type="primary" :loading="batchApproveLoading">
+            批量通过 ({{ selectedDraftIds.length }})
+          </n-button>
+          <n-button v-if="selectedPendingIds.length > 0" @click="handleBatchSubmit" type="primary" ghost :loading="batchSubmitLoading">
+            批量提交 ({{ selectedPendingIds.length }})
+          </n-button>
+          <n-button @click="goHome" quaternary>
+            <template #icon>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             </template>
             返回主页
           </n-button>
@@ -30,333 +30,167 @@
       </div>
     </header>
 
-    <!-- 主要内容区域 -->
-    <div class="main-container">
-      <!-- 左侧：审批列表 -->
-      <aside class="approval-list-sidebar">
-        <div class="sidebar-header">
-          <h3>审批列表</h3>
-          <n-button text size="small" @click="refreshApprovals">
-            <template #icon>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                <path d="M21 3v5h-5"></path>
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                <path d="M3 21v-5h5"></path>
-              </svg>
-            </template>
-            刷新
-          </n-button>
-        </div>
-
-        <!-- 搜索框 -->
-        <div class="search-box">
-          <n-input
-            v-model:value="searchKeyword"
-            placeholder="搜索表单名称..."
-            clearable
-            @update:value="handleSearch"
-          >
+    <!-- 主内容 -->
+    <div class="main-layout">
+      <!-- 左侧：表单分组 -->
+      <aside class="sidebar">
+        <div class="sidebar-search">
+          <n-input v-model:value="searchKeyword" placeholder="搜索表单..." clearable size="small">
             <template #prefix>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </template>
           </n-input>
         </div>
-
-        <!-- 审批列表 -->
-        <div class="approval-list" v-loading="loading">
-          <div
-            v-for="approval in filteredApprovals"
-            :key="approval.id"
-            class="approval-item"
-            :class="{ active: selectedApproval?.id === approval.id }"
-            @click="selectApproval(approval)"
-          >
-            <div class="approval-item-header">
-              <div class="approval-title">{{ approval.form_name }}</div>
-              <n-tag
-                :type="getStateType(approval.process_state, approval.is_overdue)"
-                size="small"
-                :bordered="false"
-              >
-                {{ getStateLabel(approval.process_state, approval.is_overdue) }}
-              </n-tag>
-            </div>
-            <div class="approval-item-meta">
-              <div class="meta-item">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                  <line x1="16" y1="2" x2="16" y2="6"></line>
-                  <line x1="8" y1="2" x2="8" y2="6"></line>
-                  <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-                <span>{{ formatDate(approval.created_at) }}</span>
-              </div>
-              <div class="meta-item" v-if="approval.due_at">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                <span :class="{ overdue: approval.is_overdue }">
-                  {{ formatDate(approval.due_at) }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <n-empty v-if="filteredApprovals.length === 0 && !loading" description="暂无审批记录" />
+        <div class="status-tabs">
+          <n-button
+            v-for="tab in statusTabs"
+            :key="tab.value"
+            :type="statusFilter === tab.value ? 'primary' : 'default'"
+            size="tiny"
+            quaternary
+            @click="statusFilter = tab.value"
+          >{{ tab.label }}</n-button>
         </div>
-      </aside>
-
-      <!-- 右侧：审批详情 -->
-      <main class="approval-detail-main" v-if="selectedApproval">
-        <!-- 审批详情头部 -->
-        <div class="detail-header">
-          <div class="detail-title">
-            <h2>{{ selectedApproval.form_name }}</h2>
-            <n-tag
-              :type="getStateType(selectedApproval.process_state, selectedApproval.is_overdue)"
-              :bordered="false"
-            >
-              {{ getStateLabel(selectedApproval.process_state, selectedApproval.is_overdue) }}
-            </n-tag>
-          </div>
-          <div class="detail-meta">
-            <div class="meta-item">
-              <span class="meta-label">提交时间：</span>
-              <span>{{ formatDateTime(selectedApproval.created_at) }}</span>
-            </div>
-            <div class="meta-item" v-if="selectedApproval.due_at">
-              <span class="meta-label">截止时间：</span>
-              <span :class="{ overdue: selectedApproval.is_overdue }">
-                {{ formatDateTime(selectedApproval.due_at) }}
+        <div class="sidebar-list" v-loading="loading">
+          <div
+            v-for="group in groupedForms"
+            :key="group.form_id"
+            class="form-group-card"
+            :class="{ active: selectedFormId === group.form_id }"
+            @click="selectForm(group.form_id)"
+          >
+            <div class="form-group-name">{{ group.form_name }}</div>
+            <div class="form-group-stats">
+              <span class="stat-item" v-if="countByState(group.items, 'draft')">
+                <span class="stat-dot draft"></span>{{ countByState(group.items, 'draft') }} 待通过
+              </span>
+              <span class="stat-item" v-if="countByState(group.items, 'pending_approval')">
+                <span class="stat-dot pending"></span>{{ countByState(group.items, 'pending_approval') }} 待提交
+              </span>
+              <span class="stat-item" v-if="countByState(group.items, 'running')">
+                <span class="stat-dot running"></span>{{ countByState(group.items, 'running') }} 进行中
+              </span>
+              <span class="stat-item" v-if="countByState(group.items, 'finished')">
+                <span class="stat-dot finished"></span>{{ countByState(group.items, 'finished') }} 已完成
+              </span>
+              <span class="stat-item" v-if="countByState(group.items, 'canceled')">
+                <span class="stat-dot canceled"></span>{{ countByState(group.items, 'canceled') }} 已撤回
               </span>
             </div>
           </div>
+          <n-empty v-if="groupedForms.length === 0 && !loading" description="暂无审批记录" />
+        </div>
+      </aside>
+
+      <!-- 右侧：提交列表 -->
+      <main class="content-area" v-if="selectedFormGroup">
+        <!-- 统计栏 -->
+        <div class="stats-bar">
+          <div class="stats-title">{{ selectedFormGroup.form_name }}</div>
+          <div class="stats-pills">
+            <span class="pill">总计 {{ selectedFormGroup.items.length }}</span>
+            <span class="pill draft" v-if="draftCount">待通过 {{ draftCount }}</span>
+            <span class="pill running" v-if="runningCount">运行中 {{ runningCount }}</span>
+            <span class="pill finished" v-if="finishedCount">已完成 {{ finishedCount }}</span>
+          </div>
         </div>
 
-        <!-- Tab 页签内容区 -->
-        <div class="detail-tabs-container">
-          <n-tabs type="segment" :default-value="'flow'" class="detail-tabs">
-            <!-- Tab 1: 流程图 -->
-            <n-tab-pane name="flow" tab="审批流程">
-              <div class="flow-diagram-container" v-loading="flowLoading">
-                <div v-if="flowNodes.length > 0" class="flow-diagram-wrapper">
-                  <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :fieldLabels="fieldLabels" />
-                </div>
-                <n-empty v-else description="暂无流程图数据" />
-              </div>
-            </n-tab-pane>
+        <!-- 提交卡片列表 -->
+        <div class="submission-list">
+          <div
+            v-for="item in selectedFormGroup.items"
+            :key="item.id"
+            class="submission-card"
+            :class="[`status-${item.status === 'draft' ? 'draft' : item.process_state || 'pending_approval'}`]"
+          >
+            <!-- 左侧 checkbox（仅草稿和待提交） -->
+            <n-checkbox
+              v-if="item.status === 'draft' || item.status === 'pending_approval' || item.process_state === 'pending_approval' || item.process_state === 'canceled'"
+              :checked="selectedDraftIds.includes(item.id) || selectedPendingIds.includes(item.id)"
+              @click.stop="toggleSelect(item)"
+              class="draft-checkbox"
+            />
 
-            <!-- Tab 2: 表单数据 -->
-            <n-tab-pane name="form" tab="表单数据">
-              <div class="form-data-container" v-loading="loadingSubmissionDetail">
-                <div v-if="displayFields.length > 0" class="form-fields">
-                  <div
-                    v-for="(item, index) in displayFields"
-                    :key="item.key"
-                    class="form-field-item"
-                    :class="{ 'field-alt': index % 2 === 1 }"
-                  >
-                    <div class="field-label">{{ item.label }}</div>
-                    <div class="field-value">
-                      <!-- 附件/图片字段 -->
-                      <template v-if="item.fieldType === 'upload' || item.fieldType === 'image'">
-                        <template v-if="item.attachments && item.attachments.length > 0">
-                          <div class="attachment-list">
-                            <div
-                              v-for="file in item.attachments"
-                              :key="file.id"
-                              class="attachment-item"
-                            >
-                              <template v-if="isImage(file.content_type)">
-                                <div class="image-preview">
-                                  <AuthImage
-                                    :src="`/api/v1/attachments/${file.id}/download?inline=true`"
-                                    :alt="file.file_name"
-                                    :width="200"
-                                    :height="150"
-                                    object-fit="cover"
-                                    fallback-src="/image-placeholder.png"
-                                  />
-                                  <n-a :href="`/api/v1/attachments/${file.id}/download`" target="_blank">
-                                    <n-button text type="primary" size="tiny">
-                                      下载
-                                    </n-button>
-                                  </n-a>
-                                </div>
-                              </template>
-                              <template v-else>
-                                <n-a :href="file.download_url" target="_blank">
-                                  <n-button text type="primary" size="small">
-                                    {{ file.file_name }}
-                                  </n-button>
-                                </n-a>
-                              </template>
-                            </div>
-                          </div>
-                        </template>
-                        <span v-else class="empty-value">未上传</span>
-                      </template>
-                      <!-- 日期范围字段 -->
-                      <template v-else-if="item.fieldType === 'date-range'">
-                        {{ formatDateRange(item.value) }}
-                      </template>
-                      <!-- 日期字段 -->
-                      <template v-else-if="item.fieldType === 'date'">
-                        {{ formatDateTimeValue(item.value) }}
-                      </template>
-                      <!-- 其他字段 -->
-                      <template v-else>
-                        {{ formatFieldValue(item.value, item.options) }}
-                      </template>
-                    </div>
-                  </div>
-                </div>
-                <n-empty v-else-if="!loadingSubmissionDetail" description="暂无表单数据" />
+            <!-- 中间信息 -->
+            <div class="submission-info">
+              <div class="submission-meta">
+                <span class="submission-time">{{ formatDateTime(item.created_at) }}</span>
+                <n-tag :type="getStateType(item.process_state, item.is_overdue)" size="small" :bordered="false">
+                  {{ getStateLabel(item.process_state, item.is_overdue, item.status) }}
+                </n-tag>
               </div>
-            </n-tab-pane>
-
-            <!-- Tab 3: 时间线 -->
-            <n-tab-pane name="timeline" tab="审批时间线">
-              <div class="timeline-container" v-loading="flowLoading">
-                <div v-if="processTimeline?.entries?.length" class="timeline">
-                  <div
-                    v-for="(entry, index) in processTimeline.entries"
-                    :key="index"
-                    class="timeline-item"
-                    :class="[`status-${entry.status}`, `action-${entry.action}`]"
-                  >
-                    <div class="timeline-marker">
-                      <div class="marker-dot"></div>
-                      <div class="marker-line" v-if="index < processTimeline.entries.length - 1"></div>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-header">
-                        <div class="node-name">{{ entry.node_name }}</div>
-                        <n-tag
-                          :type="getTimelineStatusType(entry.status)"
-                          size="small"
-                          :bordered="false"
-                        >
-                          {{ getTimelineStatusLabel(entry.status) }}
-                        </n-tag>
-                      </div>
-                      <div class="timeline-meta">
-                        <div class="meta-item">
-                          <span class="meta-label">处理人：</span>
-                          <span>{{ entry.actor_name || '待处理' }}</span>
-                        </div>
-                        <div class="meta-item">
-                          <span class="meta-label">开始时间：</span>
-                          <span>{{ formatDateTime(entry.started_at) }}</span>
-                        </div>
-                        <div class="meta-item" v-if="entry.completed_at">
-                          <span class="meta-label">完成时间：</span>
-                          <span>{{ formatDateTime(entry.completed_at) }}</span>
-                        </div>
-                        <div class="meta-item" v-if="entry.due_at">
-                          <span class="meta-label">截止时间：</span>
-                          <span :class="{ overdue: entry.remaining_sla_minutes && entry.remaining_sla_minutes <= 0 }">
-                            {{ formatDateTime(entry.due_at) }}
-                          </span>
-                        </div>
-                        <div class="meta-item" v-if="entry.sla_level && entry.sla_level !== 'unknown'">
-                          <span class="meta-label">SLA级别：</span>
-                          <n-tag :type="getSLALevelType(entry.sla_level)" size="small" :bordered="false">
-                            {{ getSLALevelLabel(entry.sla_level) }}
-                          </n-tag>
-                        </div>
-                      </div>
-                      <div class="timeline-comment" v-if="entry.comment">
-                        <div class="comment-label">审批意见：</div>
-                        <div class="comment-content">{{ entry.comment }}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <n-empty v-else description="暂无审批时间线" />
+              <div class="submission-due" v-if="item.due_at">
+                截止: <span :class="{ overdue: item.is_overdue }">{{ formatDateTime(item.due_at) }}</span>
               </div>
-            </n-tab-pane>
-          </n-tabs>
-        </div>
+            </div>
 
-        <!-- 操作区域（固定在底部） -->
-        <div class="action-section" v-if="canEditSubmission || isPendingApproval || canWithdraw || isCanceled">
-          <div class="action-buttons">
-            <!-- 暂存待发状态：显示发起审批按钮 -->
-            <n-button v-if="isPendingApproval" type="primary" @click="handleStartApproval" :loading="startApprovalLoading">
-              <template #icon>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M22 2L11 13"></path>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
+              <!-- 右侧操作 -->
+            <div class="submission-actions">
+              <!-- 草稿：编辑 / 删除 / 通过 -->
+              <template v-if="item.status === 'draft'">
+                <n-button size="tiny" @click.stop="editSubmission(item)">编辑</n-button>
+                <n-button size="tiny" type="error" ghost @click.stop="deleteDraft(item)">删除</n-button>
+                <n-button size="tiny" type="primary" @click.stop="handleApprove(item)">通过</n-button>
               </template>
-              发起审批
-            </n-button>
-            <!-- 已撤回状态：显示提交审批按钮 -->
-            <n-button v-if="isCanceled" type="primary" @click="handleStartApproval" :loading="startApprovalLoading">
-              <template #icon>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M22 2L11 13"></path>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
+              <!-- 待提交：编辑 / 提交 -->
+              <template v-else-if="item.status === 'pending_approval' || item.process_state === 'pending_approval'">
+                <n-button size="tiny" @click.stop="editSubmission(item)">编辑</n-button>
+                <n-button size="tiny" type="primary" @click.stop="handleSubmit(item)">提交</n-button>
+                <n-button size="tiny" @click.stop="toggleDetail(item)">
+                  {{ expandedSubmissionId === item.id ? '收起' : '详情' }}
+                </n-button>
               </template>
-              提交审批
-            </n-button>
-            <!-- 运行中状态：显示撤回按钮 -->
-            <n-button v-if="canWithdraw" type="warning" @click="handleWithdraw" :loading="withdrawLoading">
-              <template #icon>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                  <polyline points="16 17 21 12 16 7"></polyline>
-                  <line x1="21" y1="12" x2="9" y2="12"></line>
-                </svg>
+              <!-- 其他状态 -->
+              <template v-else>
+                <n-button v-if="item.process_state === 'running'" size="tiny" type="warning" ghost @click.stop="handleWithdraw(item)">撤回</n-button>
+                <n-button v-if="item.process_state === 'canceled'" size="tiny" @click.stop="editSubmission(item)">编辑</n-button>
+                <n-button v-if="item.process_state === 'canceled'" size="tiny" type="primary" @click.stop="handleSubmit(item)">提交</n-button>
+                <n-button size="tiny" @click.stop="toggleDetail(item)">
+                  {{ expandedSubmissionId === item.id ? '收起' : '详情' }}
+                </n-button>
               </template>
-              撤回
-            </n-button>
-            <!-- 暂存待发和已撤回状态：显示编辑表单按钮 -->
-            <n-button v-if="canEditSubmission" type="primary" @click="editSubmission">
-              <template #icon>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-              </template>
-              编辑表单
-            </n-button>
-            <n-button @click="viewSubmissionDetail">
-              <template #icon>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                  <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-              </template>
-              查看详情
-            </n-button>
+            </div>
+
+            <!-- 展开的详情区域 -->
+            <div class="detail-panel" :class="{ expanded: expandedSubmissionId === item.id }">
+              <div v-if="expandedSubmissionId === item.id">
+                <div v-if="flowLoading" class="detail-loading">
+                  <n-spin size="small" /> 加载中...
+                </div>
+                <div v-else-if="flowNodes.length > 0">
+                  <div class="detail-section-title">审批流程</div>
+                  <FlowDiagram :nodes="flowNodes" :routes="flowRoutes" :timeline="processTimeline" />
+                </div>
+                <div v-else class="detail-empty">暂无流程数据</div>
+              </div>
+            </div>
           </div>
         </div>
       </main>
 
-      <!-- 未选择审批时的占位 -->
-      <main class="approval-detail-main empty-state" v-else>
-        <div class="empty-content">
-          <div class="empty-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-          </div>
-          <h3>选择审批记录</h3>
-          <p>从左侧列表中选择一个审批记录查看详情</p>
-        </div>
+      <!-- 未选择时占位 -->
+      <main class="content-area empty" v-else>
+        <n-empty description="从左侧选择一个表单查看审批记录" />
       </main>
     </div>
+
+    <!-- 导入弹窗 -->
+    <n-modal v-model:show="showImportModal" preset="dialog" title="导入数据" style="width: 500px">
+      <n-form label-placement="left" label-width="80">
+        <n-form-item label="选择表单">
+          <n-select v-model:value="importFormId" :options="formOptions" placeholder="请选择要导入的表单" filterable />
+        </n-form-item>
+        <n-form-item label="操作">
+          <n-space>
+            <n-button size="small" @click="handleDownloadTemplate" :disabled="!importFormId">下载模板</n-button>
+            <n-upload :show-file-list="false" accept=".xlsx,.xls" :custom-request="handleImportUpload">
+              <n-button size="small" type="primary" :disabled="!importFormId" :loading="importLoading">选择文件并导入</n-button>
+            </n-upload>
+          </n-space>
+        </n-form-item>
+      </n-form>
+      <n-alert v-if="importResult" :type="importResult.success ? 'success' : 'warning'" :title="importResult.message" style="margin-top: 12px" />
+    </n-modal>
   </div>
 </template>
 
@@ -366,13 +200,11 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useMySubmittedApprovals } from '@/stores/mySubmittedApprovals'
 import type { MyApprovalItem } from '@/stores/mySubmittedApprovals'
-import FlowDiagram from '@/components/form/FlowDiagram.vue'
-import AuthImage from '@/components/AuthImage.vue'
-import { startApproval, getSubmissionDetail } from '@/api/submission'
+import { startApproval, batchImport, batchSubmit, batchApprove, downloadImportTemplate, deleteSubmission } from '@/api/submission'
 import { cancelTaskBySubmission } from '@/api/approvals'
-import { useMessage, NA } from 'naive-ui'
-import type { SubmissionDetail } from '@/types/submission'
-import type { AttachmentInfo } from '@/types/attachment'
+import { getFillableForms } from '@/api/workspace'
+import FlowDiagram from '@/components/form/FlowDiagram.vue'
+import { useMessage } from 'naive-ui'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -381,388 +213,270 @@ const message = useMessage()
 
 // 响应式数据
 const searchKeyword = ref('')
-const selectedApproval = ref<MyApprovalItem | null>(null)
-const startApprovalLoading = ref(false)
-const withdrawLoading = ref(false)
+const statusFilter = ref('all')
+const selectedFormId = ref<number | null>(null)
 
-// 提交详情数据（用于表单数据展示）
-const submissionDetail = ref<SubmissionDetail | null>(null)
-const loadingSubmissionDetail = ref(false)
+const statusTabs = [
+  { label: '全部', value: 'all' },
+  { label: '待通过', value: 'draft' },
+  { label: '待提交', value: 'pending' },
+  { label: '运行中', value: 'running' },
+  { label: '已完成', value: 'finished' },
+  { label: '已撤回', value: 'canceled' },
+]
+
+// 导入
+const showImportModal = ref(false)
+const importFormId = ref<number | null>(null)
+const importLoading = ref(false)
+const importResult = ref<{ success: boolean; message: string } | null>(null)
+const formOptions = ref<Array<{ label: string; value: number }>>([])
+
+// 批量操作
+const selectedDraftIds = ref<number[]>([])
+const selectedPendingIds = ref<number[]>([])
+const batchApproveLoading = ref(false)
+const batchSubmitLoading = ref(false)
+
+// 详情展开
+const expandedSubmissionId = ref<number | null>(null)
 
 // 计算属性
 const loading = computed(() => approvalStore.loading)
 const flowLoading = computed(() => approvalStore.flowLoading)
 const flowNodes = computed(() => approvalStore.flowNodes)
 const flowRoutes = computed(() => approvalStore.flowRoutes)
-const fieldLabels = computed(() => approvalStore.fieldLabels)
 const processTimeline = computed(() => approvalStore.processTimeline)
 
-// 过滤后的审批列表
 const filteredApprovals = computed(() => {
-  if (!searchKeyword.value) return approvalStore.approvalList
-  const keyword = searchKeyword.value.toLowerCase()
-  return approvalStore.approvalList.filter(item =>
-    item.form_name.toLowerCase().includes(keyword)
-  )
-})
-
-// 是否可以编辑提交（暂存待发或已撤回状态）
-const canEditSubmission = computed(() => {
-  if (!selectedApproval.value) return false
-  // 暂存待发和已撤回状态都可以编辑
-  return selectedApproval.value.process_state === 'pending_approval' || 
-         selectedApproval.value.process_state === 'canceled'
-})
-
-// 是否是暂存待发状态
-const isPendingApproval = computed(() => {
-  if (!selectedApproval.value) return false
-  return selectedApproval.value.process_state === 'pending_approval'
-})
-
-// 是否是已撤回状态
-const isCanceled = computed(() => {
-  if (!selectedApproval.value) return false
-  return selectedApproval.value.process_state === 'canceled'
-})
-
-// 是否可以撤回（运行中状态）
-const canWithdraw = computed(() => {
-  if (!selectedApproval.value) return false
-  return selectedApproval.value.process_state === 'running'
-})
-
-// 方法
-const goHome = () => {
-  router.push('/')
-}
-
-const refreshApprovals = async () => {
-  await approvalStore.loadMyApprovals()
-}
-
-const selectApproval = async (approval: MyApprovalItem) => {
-  selectedApproval.value = approval
-  await approvalStore.selectApproval(approval)
-}
-
-const refreshFlowData = async () => {
-  if (selectedApproval.value) {
-    await approvalStore.loadFlowDiagram(
-      selectedApproval.value.form_id,
-      selectedApproval.value.process_instance_id,
-      selectedApproval.value.flow_definition_id
-    )
+  let list = approvalStore.approvalList
+  // 表单名称搜索
+  if (searchKeyword.value) {
+    const kw = searchKeyword.value.toLowerCase()
+    list = list.filter(item => item.form_name.toLowerCase().includes(kw))
   }
-}
-
-const handleSearch = () => {
-  // 搜索逻辑已在计算属性中实现
-}
-
-const editSubmission = () => {
-  if (selectedApproval.value) {
-    // 跳转到表单编辑页面
-    router.push(`/form/${selectedApproval.value.form_id}/fill?submission=${selectedApproval.value.id}`)
-  }
-}
-
-const viewSubmissionDetail = () => {
-  if (selectedApproval.value) {
-    router.push(`/submissions/${selectedApproval.value.id}`)
-  }
-}
-
-// 发起审批
-const handleStartApproval = async () => {
-  if (!selectedApproval.value) return
-  
-  startApprovalLoading.value = true
-  try {
-    await startApproval(selectedApproval.value.id)
-    message.success('审批流程已发起')
-    // 刷新列表
-    await approvalStore.loadMyApprovals()
-    // 更新选中项的状态
-    selectedApproval.value.process_state = 'running'
-  } catch (error: any) {
-    message.error(error?.message || '发起审批失败')
-  } finally {
-    startApprovalLoading.value = false
-  }
-}
-
-// 撤回审批
-const handleWithdraw = async () => {
-  if (!selectedApproval.value) return
-  
-  withdrawLoading.value = true
-  try {
-    await cancelTaskBySubmission(selectedApproval.value.id)
-    message.success('已撤回审批')
-    // 刷新列表
-    await approvalStore.loadMyApprovals()
-    // 清空选中项
-    selectedApproval.value = null
-  } catch (error: any) {
-    message.error(error?.message || '撤回失败')
-  } finally {
-    withdrawLoading.value = false
-  }
-}
-
-const getStateType = (state: string | null, isOverdue?: boolean): 'success' | 'warning' | 'error' | 'info' => {
-  return approvalStore.getStateType(state, isOverdue)
-}
-
-const getStateLabel = (state: string | null, isOverdue?: boolean): string => {
-  return approvalStore.getStateLabel(state, isOverdue)
-}
-
-const getTimelineStatusType = (status: string | null | undefined): 'success' | 'warning' | 'error' | 'info' => {
-  switch (status) {
-    case 'completed': return 'success'
-    case 'claimed':
-    case 'open': return 'warning'
-    case 'canceled': return 'error'
-    case 'rejected': return 'error'
-    default: return 'info'
-  }
-}
-
-const getTimelineStatusLabel = (status: string | null | undefined): string => {
-  switch (status) {
-    case 'completed': return '已完成'
-    case 'approved': return '已通过'
-    case 'claimed': return '已认领'
-    case 'open': return '待处理'
-    case 'canceled': return '已取消'
-    case 'rejected': return '已拒绝'
-    default: return status || '未知'
-  }
-}
-
-const getSLALevelType = (level: string | null | undefined): 'success' | 'warning' | 'error' | 'info' => {
-  switch (level) {
-    case 'normal': return 'success'
-    case 'warning': return 'warning'
-    case 'critical': return 'error'
-    default: return 'info'
-  }
-}
-
-const getSLALevelLabel = (level: string | null | undefined): string => {
-  switch (level) {
-    case 'normal': return '正常'
-    case 'warning': return '警告'
-    case 'critical': return '紧急'
-    case 'unknown': return '未知'
-    default: return level || '未知'
-  }
-}
-
-const formatDate = (dateString: string | null | undefined): string => {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-const formatDateTime = (dateString: string | null | undefined): string => {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
-// 加载提交详情（用于表单数据展示）
-const loadSubmissionDetail = async (submissionId: number) => {
-  loadingSubmissionDetail.value = true
-  try {
-    const res = await getSubmissionDetail(submissionId)
-    if (res.code === 200 && res.data) {
-      submissionDetail.value = res.data
-    } else {
-      submissionDetail.value = null
-      message.warning('未找到提交详情')
-    }
-  } catch (error) {
-    console.error('加载提交详情失败:', error)
-    submissionDetail.value = null
-    message.error('加载表单数据失败，请稍后重试')
-  } finally {
-    loadingSubmissionDetail.value = false
-  }
-}
-
-// 表单字段展示数据
-interface DisplayField {
-  key: string
-  label: string
-  value: unknown
-  fieldType?: string
-  options?: Array<{ label: string; value: unknown }>
-  attachments?: AttachmentInfo[]
-}
-
-const attachmentMap = computed(() => {
-  const map = new Map<number, AttachmentInfo>()
-  const attachments = submissionDetail.value?.attachments ?? []
-  attachments.forEach((item) => {
-    map.set(item.id, item)
-  })
-  return map
-})
-
-const displayFields = computed<DisplayField[]>(() => {
-  if (!submissionDetail.value) return []
-  const snapshot = submissionDetail.value.snapshot_json || {}
-  const labels = snapshot.field_labels || {}
-  const types = snapshot.field_types || {}
-  const options = snapshot.field_options || {}
-  const raw = submissionDetail.value.data_jsonb || {}
-
-  return Object.entries(raw).map(([key, value]) => {
-    const fieldType = types[key]
-    const fieldOptions = options[key]
-    const attachmentValue = resolveAttachmentValue(value, fieldType)
-
-    return {
-      key,
-      label: labels[key] || key,
-      value,
-      fieldType,
-      options: fieldOptions,
-      attachments: attachmentValue || undefined,
-    }
-  })
-})
-
-const resolveAttachmentValue = (value: unknown, fieldType?: string): AttachmentInfo[] | null => {
-  if (!fieldType || !['upload', 'image'].includes(fieldType)) {
-    return null
-  }
-  if (!Array.isArray(value)) {
-    return null
-  }
-  const files = value
-    .map((id) => (typeof id === 'number' ? attachmentMap.value.get(id) : null))
-    .filter((item): item is AttachmentInfo => Boolean(item))
-  return files.length ? files : null
-}
-
-const formatFieldValue = (value: unknown, options?: Array<{ label: string; value: unknown }>): string => {
-  if (value == null) return '-'
-  if (options && options.length > 0) {
-    if (Array.isArray(value)) {
-      const labels = value.map(v => {
-        const option = options.find(opt => opt.value === v)
-        return option?.label || String(v)
-      })
-      return labels.join('、')
-    } else {
-      const option = options.find(opt => opt.value === value)
-      return option?.label || String(value)
-    }
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item)).join('、')
-  }
-  if (typeof value === 'object') {
-    return JSON.stringify(value)
-  }
-  return String(value)
-}
-
-const formatDateRange = (value: unknown): string => {
-  if (!value) return '-'
-  if (Array.isArray(value) && value.length === 2) {
-    const [start, end] = value
-    return `${formatDateOnly(start)} - ${formatDateOnly(end)}`
-  }
-  if (typeof value === 'object' && value !== null) {
-    const obj = value as Record<string, unknown>
-    if ('start' in obj && 'end' in obj) {
-      return `${formatDateOnly(obj.start)} - ${formatDateOnly(obj.end)}`
-    }
-  }
-  return String(value)
-}
-
-const formatDateOnly = (value: unknown): string => {
-  if (!value) return '-'
-  let date: Date
-  if (typeof value === 'number') {
-    date = new Date(value)
-  } else if (typeof value === 'string') {
-    date = new Date(value)
-  } else {
-    return String(value)
-  }
-  if (isNaN(date.getTime())) {
-    return String(value)
-  }
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-const formatDateTimeValue = (value: unknown): string => {
-  if (!value) return '-'
-  if (typeof value === 'number') {
-    const date = new Date(value)
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+  // 状态筛选
+  if (statusFilter.value !== 'all') {
+    list = list.filter(item => {
+      switch (statusFilter.value) {
+        case 'draft': return item.status === 'draft'
+        case 'pending': return item.process_state === 'pending_approval'
+        case 'running': return item.process_state === 'running'
+        case 'finished': return item.process_state === 'finished'
+        case 'canceled': return item.process_state === 'canceled' || item.process_state === 'pending_approval'
+        default: return true
+      }
     })
   }
-  if (typeof value === 'string') {
-    const date = new Date(value)
-    if (!isNaN(date.getTime())) {
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    }
-  }
-  return String(value)
-}
-
-const isImage = (contentType?: string): boolean => {
-  if (!contentType) return false
-  return contentType.startsWith('image/')
-}
-
-// 监听选择变化
-watch(selectedApproval, (newVal) => {
-  if (newVal) {
-    refreshFlowData()
-    // 加载提交详情用于表单数据展示
-    loadSubmissionDetail(newVal.id)
-  } else {
-    submissionDetail.value = null
-  }
+  return list
 })
+
+const groupedForms = computed(() => {
+  const map = new Map<number, { form_id: number; form_name: string; items: MyApprovalItem[] }>()
+  for (const item of filteredApprovals.value) {
+    if (!map.has(item.form_id)) {
+      map.set(item.form_id, { form_id: item.form_id, form_name: item.form_name, items: [] })
+    }
+    map.get(item.form_id)!.items.push(item)
+  }
+  return Array.from(map.values())
+})
+
+const selectedFormGroup = computed(() => {
+  if (!selectedFormId.value) return null
+  return groupedForms.value.find(g => g.form_id === selectedFormId.value) || null
+})
+
+const draftCount = computed(() => selectedFormGroup.value ? countByState(selectedFormGroup.value.items, 'draft') : 0)
+const runningCount = computed(() => selectedFormGroup.value ? countByState(selectedFormGroup.value.items, 'running') : 0)
+const finishedCount = computed(() => selectedFormGroup.value ? countByState(selectedFormGroup.value.items, 'finished') : 0)
+
+// 方法
+const countByState = (items: MyApprovalItem[], state: string): number => {
+  if (state === 'draft') return items.filter(i => i.status === 'draft').length
+  if (state === 'pending_approval') return items.filter(i => i.process_state === 'pending_approval').length
+  if (state === 'running') return items.filter(i => i.process_state === 'running').length
+  if (state === 'finished') return items.filter(i => i.process_state === 'finished').length
+  if (state === 'canceled') return items.filter(i => i.process_state === 'canceled' || i.process_state === 'pending_approval').length
+  return 0
+}
+
+const goHome = () => router.push('/')
+const refreshApprovals = async () => { await approvalStore.loadMyApprovals() }
+
+const selectForm = (formId: number) => {
+  selectedFormId.value = formId
+  selectedDraftIds.value = []
+  selectedPendingIds.value = []
+  expandedSubmissionId.value = null
+}
+
+const editSubmission = (item: MyApprovalItem) => {
+  router.push(`/form/${item.form_id}/fill?edit_submission_id=${item.id}`)
+}
+
+const viewSubmissionDetail = (item: MyApprovalItem) => {
+  router.push(`/submissions/${item.id}`)
+}
+
+const toggleDetail = async (item: MyApprovalItem) => {
+  if (expandedSubmissionId.value === item.id) {
+    expandedSubmissionId.value = null
+    return
+  }
+  expandedSubmissionId.value = item.id
+  // 设置选中项，computed refs 会自动返回该提交的流程数据
+  approvalStore.selectedApproval = item
+  // 按需加载流程数据（已有缓存则跳过）
+  if (item.process_instance_id) {
+    await approvalStore.loadFlowDiagram(item.form_id, item.process_instance_id, item.flow_definition_id)
+  }
+}
+
+const handleStartApproval = async (item: MyApprovalItem) => {
+  try {
+    await startApproval(item.id)
+    message.success('已通过，审批流程已发起')
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '通过失败')
+  }
+}
+
+const handleWithdraw = async (item: MyApprovalItem) => {
+  try {
+    await cancelTaskBySubmission(item.id)
+    message.success('已撤回')
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '撤回失败')
+  }
+}
+
+// 通过（草稿 → 待提交）
+const handleApprove = async (item: MyApprovalItem) => {
+  try {
+    await batchApprove([item.id])
+    message.success('已通过')
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '通过失败')
+  }
+}
+
+// 提交（待提交 → 审批流程）
+const handleSubmit = async (item: MyApprovalItem) => {
+  try {
+    await startApproval(item.id)
+    message.success('已提交，审批流程已发起')
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '提交失败')
+  }
+}
+
+// 批量通过
+const handleBatchApprove = async () => {
+  if (!selectedDraftIds.value.length) return
+  batchApproveLoading.value = true
+  try {
+    const res = await batchApprove(selectedDraftIds.value)
+    message.success(res.message || '批量通过完成')
+    selectedDraftIds.value = []
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '批量通过失败')
+  } finally {
+    batchApproveLoading.value = false
+  }
+}
+
+// 多选切换
+const toggleSelect = (item: MyApprovalItem) => {
+  if (item.status === 'draft') {
+    const idx = selectedDraftIds.value.indexOf(item.id)
+    if (idx >= 0) selectedDraftIds.value.splice(idx, 1)
+    else selectedDraftIds.value.push(item.id)
+  } else if (item.status === 'pending_approval' || item.process_state === 'pending_approval' || item.process_state === 'canceled') {
+    const idx = selectedPendingIds.value.indexOf(item.id)
+    if (idx >= 0) selectedPendingIds.value.splice(idx, 1)
+    else selectedPendingIds.value.push(item.id)
+  }
+}
+
+const deleteDraft = async (item: MyApprovalItem) => {
+  try {
+    await deleteSubmission(item.id)
+    message.success('草稿删除成功')
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '删除失败')
+  }
+}
+
+// 导入
+const handleDownloadTemplate = () => {
+  if (!importFormId.value) return
+  downloadImportTemplate(importFormId.value)
+}
+
+const handleImportUpload = async (options: any) => {
+  if (!importFormId.value) return
+  importLoading.value = true
+  importResult.value = null
+  try {
+    const res = await batchImport(importFormId.value, options.file.file)
+    importResult.value = { success: true, message: `成功导入 ${res.data.created} 条草稿` }
+    await approvalStore.loadMyApprovals()
+    selectedFormId.value = importFormId.value
+  } catch (error: any) {
+    importResult.value = { success: false, message: error?.message || '导入失败' }
+  } finally {
+    importLoading.value = false
+  }
+}
+
+const loadFormOptions = async () => {
+  try {
+    const res = await getFillableForms({ page: 1, page_size: 100 })
+    formOptions.value = (res.data?.items || []).map((f: any) => ({ label: f.name, value: f.id }))
+  } catch { formOptions.value = [] }
+}
+
+// 批量提交（待提交 → 审批流程）
+const handleBatchSubmit = async () => {
+  if (!selectedPendingIds.value.length) return
+  batchSubmitLoading.value = true
+  try {
+    const res = await batchSubmit(selectedPendingIds.value)
+    message.success(res.message || '批量提交完成')
+    selectedPendingIds.value = []
+    await approvalStore.loadMyApprovals()
+  } catch (error: any) {
+    message.error(error?.message || '批量提交失败')
+  } finally {
+    batchSubmitLoading.value = false
+  }
+}
+
+// 工具
+const getStateType = (state: string | null, isOverdue?: boolean) => approvalStore.getStateType(state, isOverdue)
+const getStateLabel = (state: string | null, isOverdue?: boolean, status?: string) => approvalStore.getStateLabel(state, isOverdue, status)
+
+const formatDateTime = (dateStr: string) => {
+  return new Date(dateStr).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+// 导入弹窗打开时加载表单选项
+watch(showImportModal, (val) => { if (val) loadFormOptions() })
 
 // 初始化
 onMounted(async () => {
   if (authStore.isLoggedIn) {
     await approvalStore.loadMyApprovals()
+    if (groupedForms.value.length && !selectedFormId.value) {
+      selectedFormId.value = groupedForms.value[0].form_id
+    }
   }
 })
 </script>
@@ -770,538 +484,188 @@ onMounted(async () => {
 <style scoped>
 .my-approvals-page {
   min-height: 100vh;
-  background: #f8fafc;
+  background: #f5f7fa;
 }
 
-/* 页面头部 */
+/* 头部 */
 .page-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 32px 0;
-  color: #ffffff;
+  color: white;
+  padding: 28px 32px;
 }
-
 .header-content {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 24px;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 20px;
 }
+.header-text h1 { margin: 0; font-size: 24px; font-weight: 700; }
+.header-text .subtitle { margin: 4px 0 0; font-size: 14px; opacity: 0.8; }
+.header-actions { display: flex; gap: 12px; }
+.header-actions .n-button { color: white; border-color: rgba(255,255,255,0.3); }
+.header-actions .n-button:hover { background: rgba(255,255,255,0.15); }
 
-.header-icon {
-  width: 56px;
-  height: 56px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
+/* 主布局 */
+.my-approvals-page {
   display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.header-text {
-  flex: 1;
-}
-
-.header-text h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.header-text .subtitle {
-  margin: 4px 0 0;
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.home-btn {
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.home-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-/* 主要内容区域 */
-.main-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
-  display: grid;
-  grid-template-columns: 380px 1fr;
-  gap: 24px;
-  min-height: calc(100vh - 140px);
-}
-
-/* 左侧审批列表 */
-.approval-list-sidebar {
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  flex-direction: column;
+  height: 100vh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
-.sidebar-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.sidebar-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
-
-.search-box {
-  padding: 16px 24px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.approval-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.approval-item {
-  padding: 16px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 8px;
-  border: 1px solid transparent;
-}
-
-.approval-item:hover {
-  background: #f8fafc;
-  border-color: #e2e8f0;
-}
-
-.approval-item.active {
-  background: #f0f5ff;
-  border-color: #667eea;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
-}
-
-.approval-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
-.approval-title {
-  font-weight: 600;
-  color: #1a202c;
-  font-size: 15px;
-  line-height: 1.4;
-  flex: 1;
-  margin-right: 12px;
-}
-
-.approval-item-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #64748b;
-}
-
-.meta-item svg {
+.page-header {
   flex-shrink: 0;
 }
 
-.meta-item .overdue {
-  color: #ef4444;
-  font-weight: 500;
-}
-
-/* 右侧审批详情 */
-.approval-detail-main {
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.empty-content {
-  text-align: center;
-  color: #64748b;
-}
-
-.empty-icon {
-  width: 80px;
-  height: 80px;
-  background: #f1f5f9;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px;
-  color: #94a3b8;
-}
-
-.empty-content h3 {
-  margin: 0 0 8px;
-  font-size: 18px;
-  color: #1a202c;
-}
-
-.empty-content p {
-  margin: 0;
-  font-size: 14px;
-}
-
-/* 详情头部 */
-.detail-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
-}
-
-.detail-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.detail-title h2 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: #1a202c;
-}
-
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
+.main-layout {
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 32px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
   gap: 24px;
-}
-
-.detail-meta .meta-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #64748b;
-}
-
-.meta-label {
-  color: #94a3b8;
-}
-
-.detail-meta .overdue {
-  color: #ef4444;
-  font-weight: 500;
-}
-
-/* Tab 页签容器 */
-.detail-tabs-container {
-  flex: 1;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 左侧边栏 */
+.sidebar {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   display: flex;
   flex-direction: column;
-}
-
-.detail-tabs {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.detail-tabs :deep(.n-tabs-nav) {
-  padding: 0 24px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.detail-tabs :deep(.n-tabs-content) {
-  flex: 1;
-  overflow: auto;
-  padding: 24px;
-}
-
-/* 操作区域（固定在底部） */
-.action-section {
-  padding: 16px 24px;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
-}
-
-/* 流程图 */
-.flow-diagram-container {
-  min-height: 300px;
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #e2e8f0;
-}
-
-.flow-diagram-wrapper {
-  min-height: 300px;
-  border-radius: 12px;
   overflow: hidden;
 }
+.sidebar-search { padding: 16px; border-bottom: 1px solid #f0f0f0; }
+.status-tabs { display: flex; gap: 4px; padding: 8px 12px 12px; border-bottom: 1px solid #f0f0f0; }
+.sidebar-list { flex: 1; overflow-y: auto; padding: 8px; }
 
-/* 时间线 */
-.timeline-container {
-  min-height: 200px;
+.form-group-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
 }
-
-.timeline {
-  position: relative;
+.form-group-card:hover { background: #f8fafc; }
+.form-group-card.active {
+  background: linear-gradient(135deg, rgba(102,126,234,0.08), rgba(118,75,162,0.08));
+  border-color: #667eea;
 }
+.form-group-name { font-weight: 600; color: #1a202c; font-size: 14px; margin-bottom: 8px; }
+.form-group-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+.stat-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #6b7280; }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; }
+.stat-dot.draft { background: #f59e0b; }
+.stat-dot.pending { background: #8b5cf6; }
+.stat-dot.running { background: #3b82f6; }
+.stat-dot.finished { background: #10b981; }
+.stat-dot.canceled { background: #9ca3af; }
 
-.timeline-item {
-  display: flex;
-  gap: 16px;
-  padding-bottom: 24px;
-}
-
-.timeline-item:last-child {
-  padding-bottom: 0;
-}
-
-.timeline-marker {
-  position: relative;
+/* 右侧内容 */
+.content-area {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   display: flex;
   flex-direction: column;
-  align-items: center;
+  overflow: hidden;
 }
+.content-area.empty { display: flex; align-items: center; justify-content: center; min-height: 400px; }
 
-.marker-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #e2e8f0;
-  border: 3px solid #ffffff;
-  box-shadow: 0 0 0 2px #e2e8f0;
-  z-index: 1;
-}
-
-.timeline-item.status-completed .marker-dot {
-  background: #10b981;
-  box-shadow: 0 0 0 2px #10b981;
-}
-
-.timeline-item.status-claimed .marker-dot,
-.timeline-item.status-open .marker-dot {
-  background: #f59e0b;
-  box-shadow: 0 0 0 2px #f59e0b;
-}
-
-.timeline-item.status-rejected .marker-dot {
-  background: #ef4444;
-  box-shadow: 0 0 0 2px #ef4444;
-}
-
-.marker-line {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2px;
-  height: calc(100% + 8px);
-  background: #e2e8f0;
-}
-
-.timeline-content {
-  flex: 1;
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid #e2e8f0;
-}
-
-.timeline-header {
+/* 统计栏 */
+.stats-bar {
+  padding: 20px 24px;
+  border-bottom: 1px solid #f0f0f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
 }
-
-.timeline-header .node-name {
-  font-weight: 600;
-  font-size: 15px;
-  color: #1a202c;
+.stats-title { font-size: 16px; font-weight: 600; color: #1a202c; }
+.stats-pills { display: flex; gap: 8px; }
+.pill {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  background: #f3f4f6;
+  color: #6b7280;
 }
+.pill.draft { background: #fef3c7; color: #92400e; }
+.pill.running { background: #dbeafe; color: #1e40af; }
+.pill.finished { background: #d1fae5; color: #065f46; }
 
-.timeline-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
-}
+/* 提交列表 */
+.submission-list { flex: 1; overflow-y: auto; padding: 16px 24px; }
 
-.timeline-meta .meta-item {
+.submission-card {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #64748b;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid #f0f0f0;
+  margin-bottom: 8px;
+  transition: all 0.25s ease;
+  flex-wrap: wrap;
 }
-
-.timeline-comment {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
+.submission-card:hover {
+  border-color: #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
+.submission-card.status-draft { border-left: 3px solid #f59e0b; }
+.submission-card.status-running,
+.submission-card.status-submitted { border-left: 3px solid #3b82f6; }
+.submission-card.status-completed,
+.submission-card.status-approved { border-left: 3px solid #10b981; }
+.submission-card.status-canceled { border-left: 3px solid #9ca3af; }
+.submission-card.status-pending_approval { border-left: 3px solid #8b5cf6; background: #f5f3ff; }
 
-.comment-label {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 4px;
+.submission-info { flex: 1; min-width: 0; }
+.submission-meta { display: flex; align-items: center; gap: 10px; }
+.submission-time { font-size: 13px; color: #374151; font-weight: 500; }
+.submission-due { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+.submission-due .overdue { color: #ef4444; font-weight: 500; }
+
+.submission-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* 展开详情面板 */
+.detail-panel {
+  flex-basis: 100%;
+  height: 0;
+  overflow: hidden;
+  transform: translateY(-10px);
+  opacity: 0;
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease,
+              transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              padding 0.3s ease,
+              margin 0.3s ease;
 }
-
-.comment-content {
-  font-size: 14px;
-  color: #1a202c;
-  line-height: 1.5;
-}
-
-/* 表单数据展示 */
-.form-data-container {
-  min-height: 150px;
+.detail-panel.expanded {
+  height: auto;
+  transform: translateY(0);
+  opacity: 1;
+  margin-top: 8px;
+  padding: 16px 20px;
   background: #f8fafc;
   border-radius: 12px;
-  padding: 16px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
 }
-
-.form-fields {
-  display: flex;
-  flex-direction: column;
+.detail-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 12px;
 }
+.detail-loading { display: flex; align-items: center; gap: 8px; color: #9ca3af; font-size: 13px; }
+.detail-empty { color: #9ca3af; font-size: 13px; text-align: center; padding: 16px; }
 
-.form-field-item {
-  padding: 12px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  transition: background-color 0.2s;
-}
-
-.form-field-item:last-child {
-  border-bottom: none;
-}
-
-.form-field-item:hover {
-  background-color: #f1f5f9;
-}
-
-.form-field-item.field-alt {
-  background-color: #fafbfc;
-}
-
-.form-field-item .field-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 4px;
-}
-
-.form-field-item .field-value {
-  font-size: 14px;
-  color: #1a202c;
-  word-break: break-word;
-}
-
-.attachment-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.attachment-item {
-  padding: 8px;
-  background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.image-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.preview-image {
-  max-width: 200px;
-  max-height: 150px;
-  border-radius: 6px;
-  object-fit: cover;
-}
-
-.empty-value {
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* 操作区域 */
-.action-buttons {
-  display: flex;
-  gap: 12px;
-}
-
-/* 响应式设计 */
-@media (max-width: 1024px) {
-  .main-container {
-    grid-template-columns: 1fr;
-  }
-
-  .approval-list-sidebar {
-    max-height: 400px;
-  }
-}
-
-@media (max-width: 768px) {
-  .header-content {
-    flex-direction: column;
-    text-align: center;
-    gap: 16px;
-  }
-
-  .detail-meta {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .timeline-meta {
-    grid-template-columns: 1fr;
-  }
-
-  .action-buttons {
-    flex-direction: column;
-  }
-}
+/* 导入弹窗 */
 </style>

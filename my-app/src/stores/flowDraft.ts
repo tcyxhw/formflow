@@ -40,6 +40,7 @@ const DEFAULT_NODE_METADATA: () => FlowNodeConfig = () => ({
   allow_delegate: true,
   auto_approve_enabled: false,
   auto_sample_ratio: 0,
+  auto_claim_on_auto_action: false,
   metadata: {},
   assignee_value: null,
   auto_approve_cond: null,

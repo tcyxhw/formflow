@@ -97,6 +97,7 @@
                 <span class="tenant-name">{{ currentTenantName }}</span>
               </div>
               <button
+                v-if="showChangeTenant"
                 type="button"
                 class="change-tenant-btn"
                 @click="goToTenantSelect"
@@ -456,6 +457,14 @@
                   >
                     <span class="btn-text">{{ loading ? '注册中...' : '注册' }}</span>
                   </button>
+
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    @click="switchTab(true)"
+                  >
+                    <span class="btn-text">取消</span>
+                  </button>
                 </form>
               </Transition>
             </div>
@@ -483,6 +492,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { useMessage, useDialog } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
 import { useTenantStore } from '@/stores/tenant'
+
+interface Props {
+  showChangeTenant?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  showChangeTenant: true
+})
 
 interface LoginForm {
   phone: string
@@ -1449,6 +1466,17 @@ const resetRegisterForm = () => {
   background-color: #000;
   transform: translateY(0);
   box-shadow: 0 1px 4px rgba(11, 13, 18, 0.2);
+}
+
+.btn-secondary {
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--input-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: rgba(15, 18, 23, 0.04);
+  border-color: var(--text-2);
 }
 
 .btn:disabled {

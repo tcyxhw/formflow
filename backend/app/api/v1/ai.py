@@ -33,6 +33,8 @@ from app.core.response import success_response, error_response
 from app.core.exceptions import ValidationError, BusinessError
 from app.services.ai_task_service import AITaskService, TaskStatus
 from app.services.ai_service import AIService
+from app.config import settings
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -99,9 +101,13 @@ async def generate_form(request: "AIFormGenerateRequest" = Body(...)):
     try:
         logger.info(f"[API] 收到生成请求: prompt_length={len(request.prompt)}, thinking={request.thinking_type}")
 
-        # 调用服务层
-        result = AIService.generate_form_config(
-            prompt=request.prompt
+        # 调用服务层（加 asyncio 超时兜底，防止 SDK timeout 失效导致无限挂起）
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                AIService.generate_form_config,
+                prompt=request.prompt,
+            ),
+            timeout=settings.GLM_TIMEOUT + 10,
         )
 
         logger.info(
@@ -122,7 +128,10 @@ async def generate_form(request: "AIFormGenerateRequest" = Body(...)):
         logger.warning(f"[API] 业务错误: {e}")
         return error_response(str(e), 4002)
 
-    except Exception as e:
+    except (TimeoutError, Exception) as e:
+        if isinstance(e, TimeoutError):
+            logger.error(f"[API] AI 生成超时 (>{settings.GLM_TIMEOUT}s)")
+            return error_response("AI 生成超时，请稍后重试", 5004)
         logger.error(f"[API] 未知错误: {e}", exc_info=True)
         return error_response("生成失败，请稍后重试", 5001)
 

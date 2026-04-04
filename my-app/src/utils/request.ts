@@ -165,7 +165,7 @@ const requestQueue = new RequestQueue()
 // 创建axios实例
 const service: AxiosInstance = axios.create({
   baseURL: '',  // 使用空字符串，让Vite代理处理/api路径
-  timeout: 10000,  // 10秒超时，快速反馈网络问题
+  timeout: 60000,  // 60秒超时，支持 AI 生成等长时间操作
   headers: {
     'Content-Type': 'application/json',
   },

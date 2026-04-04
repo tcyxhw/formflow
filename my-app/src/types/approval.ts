@@ -92,6 +92,7 @@ export interface TimelineEntry {
   task_id?: number | null
   node_id?: number | null
   node_name?: string | null
+  assignee_name?: string | null
   status?: TaskStatus | null
   action?: string | null
   actor_user_id?: number | null

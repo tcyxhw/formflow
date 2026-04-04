@@ -78,7 +78,17 @@ const permissionError = ref<string | null>(null)
 const permissionOverview = ref<FormPermissionOverview | null>(null)
 const canFill = computed(() => Boolean(permissionOverview.value?.can_fill))
 const editingSubmissionId = ref<number | null>(null)
-const isEditMode = computed(() => editingSubmissionId.value !== null)
+const previousSubmissionStatus = ref<string | null>(null)
+const explicitEditSubmissionId = ref<number | null>(null)
+
+const isEditMode = computed(() => {
+  // 只有通过URL参数明确指定编辑某个提交时，才进入编辑模式
+  // 如果是通过"再次填写"进入（即使editingSubmissionId被赋值），也视为新建模式
+  if (explicitEditSubmissionId.value !== null) {
+    return true
+  }
+  return false
+})
 
 const resolveErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback
@@ -95,9 +105,10 @@ const loadFormData = async () => {
 
     currentFormId.value = formId
 
-    // 检查是否是编辑模式
+    // 检查是否是编辑模式（通过URL参数明确指定编辑某个提交）
     const editSubmissionId = route.query.edit_submission_id
     if (editSubmissionId) {
+      explicitEditSubmissionId.value = Number(editSubmissionId)
       editingSubmissionId.value = Number(editSubmissionId)
     }
 
@@ -111,6 +122,8 @@ const loadFormData = async () => {
       allowEdit: data.allow_edit,
       maxEditCount: data.max_edit_count,
       submitDeadline: data.submit_deadline,
+      allowRepeatSubmit: data.allow_repeat_submit,
+      maxSubmitCount: data.max_submit_count,
       formSchema: data.schema_json,
       uiSchema: data.ui_schema_json,
       logicSchema: data.logic_json,
@@ -118,11 +131,11 @@ const loadFormData = async () => {
 
     await checkFillPermission(formId)
 
-    // 如果是编辑模式，加载指定的提交数据；否则加载最新的提交
+    // 如果是编辑模式，加载指定的提交数据；否则检查是否可以创建新提交
     if (editingSubmissionId.value) {
       await loadSubmissionForEdit(editingSubmissionId.value)
     } else {
-      await loadPreviousSubmission(formId)
+      await checkAndLoadPreviousSubmission(formId)
     }
   } catch (error) {
     message.error(resolveErrorMessage(error, '加载失败'))
@@ -184,53 +197,82 @@ const loadSubmissionForEdit = async (submissionId: number) => {
   }
 }
 
-const loadPreviousSubmission = async (formId: number) => {
+const checkAndLoadPreviousSubmission = async (formId: number) => {
   try {
     const { data } = await submissionApi.getLatestSubmission(formId)
 
-    if (data && formConfig.value) {
-      // 保存之前的提交ID
-      editingSubmissionId.value = data.id
+    if (!data) {
+      return
+    }
 
-      // 将之前的提交数据预填充到表单中
-      if (data.data_jsonb && formConfig.value.formSchema) {
-        // 合并之前的数据到表单schema的默认值中
-        const fields = formConfig.value.formSchema.fields || []
-        fields.forEach((field: any) => {
-          if (data.data_jsonb && field.id in data.data_jsonb) {
-            field.defaultValue = data.data_jsonb[field.id]
-          }
-        })
+    previousSubmissionStatus.value = data.status
 
-        // 传递附件信息
-        if (data.attachments && data.attachments.length > 0) {
-          console.log('[loadPreviousSubmission] 加载附件:', data.attachments)
-          formConfig.value = {
-            ...formConfig.value,
-            attachments: data.attachments,
-            formSchema: {
-              ...formConfig.value.formSchema,
-              fields: [...fields]
-            }
-          }
-        } else {
-          // 强制触发响应式更新
-          formConfig.value = {
-            ...formConfig.value,
-            formSchema: {
-              ...formConfig.value.formSchema,
-              fields: [...fields]
-            }
-          }
-        }
+    const allowRepeat = formConfig.value?.allowRepeatSubmit ?? true
+    const maxCount = formConfig.value?.maxSubmitCount ?? 0
+    const isApprovedOrRejected = data.status === 'approved' || data.status === 'rejected'
 
-        console.log(`已加载历史提交数据: submission_id=${data.id}`)
+    if (allowRepeat && isApprovedOrRejected) {
+      console.log(`[checkAndLoadPreviousSubmission] 表单允许重复提交，上次提交状态为 ${data.status}，不加载历史数据，允许创建新提交`)
+      return
+    }
+
+    if (maxCount > 0) {
+      const userSubmissionCount = await getUserSubmissionCount(formId)
+      if (userSubmissionCount >= maxCount) {
+        console.log(`[checkAndLoadPreviousSubmission] 已达到最大提交次数 ${maxCount}，不允许创建新提交`)
+        return
       }
     }
+
+    console.log(`[checkAndLoadPreviousSubmission] 加载历史提交数据: submission_id=${data.id}, status=${data.status}`)
+    await populateFormWithSubmissionData(data)
   } catch (error) {
-    // 加载历史提交失败不影响表单填写
     console.log('未找到历史提交或加载失败:', error)
   }
+}
+
+const getUserSubmissionCount = async (formId: number): Promise<number> => {
+  try {
+    const { data } = await submissionApi.getSubmissionList({ form_id: formId, page: 1, page_size: 100 })
+    return data.items.length
+  } catch {
+    return 0
+  }
+}
+
+const populateFormWithSubmissionData = async (submission: any) => {
+  if (!formConfig.value || !submission.data_jsonb) {
+    return
+  }
+
+  const fields = formConfig.value.formSchema?.fields || []
+  fields.forEach((field: any) => {
+    if (submission.data_jsonb && field.id in submission.data_jsonb) {
+      field.defaultValue = submission.data_jsonb[field.id]
+    }
+  })
+
+  if (submission.attachments && submission.attachments.length > 0) {
+    formConfig.value = {
+      ...formConfig.value,
+      attachments: submission.attachments,
+      formSchema: {
+        ...formConfig.value.formSchema!,
+        fields: [...fields]
+      }
+    }
+  } else {
+    formConfig.value = {
+      ...formConfig.value,
+      formSchema: {
+        ...formConfig.value.formSchema!,
+        fields: [...fields]
+      }
+    }
+  }
+
+  editingSubmissionId.value = submission.id
+  console.log(`已加载历史提交数据: submission_id=${submission.id}, status=${submission.status}`)
 }
 
 const checkFillPermission = async (formId: number) => {
@@ -266,9 +308,9 @@ const handleSubmit = async (payload: FormSubmissionPayload) => {
 
   try {
     // 编辑模式：保存编辑，不触发审批流程
-    if (editingSubmissionId.value) {
+    if (isEditMode.value) {
       await submissionApi.updateSubmission(
-        editingSubmissionId.value,
+        editingSubmissionId.value!,
         payload as SubmissionData
       )
       message.success('保存成功')
@@ -285,7 +327,7 @@ const handleSubmit = async (payload: FormSubmissionPayload) => {
     message.success('提交成功，审批流程已发起')
     router.push('/form/fill-center')
   } catch (error) {
-    message.error(resolveErrorMessage(error, editingSubmissionId.value ? '保存失败' : '提交失败'))
+    message.error(resolveErrorMessage(error, isEditMode.value ? '保存失败' : '提交失败'))
   }
 }
 

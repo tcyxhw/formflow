@@ -171,15 +171,31 @@ class AssignmentService:
     def _pick_user_by_position(config: Optional[dict], tenant_id: int, db: Session) -> Optional[int]:
         """结合岗位生效期筛选候选人（使用智能分配）。"""
 
-        if not config or not config.get("position_id"):
+        if not config:
             return None
+
+        position_id = config.get("position_id")
+        position_name = config.get("position_name")
+
+        if not position_id and not position_name:
+            return None
+
+        if position_name and not position_id:
+            from app.models.user import Position
+            pos = db.query(Position).filter(
+                Position.tenant_id == tenant_id,
+                Position.name == position_name,
+            ).first()
+            if not pos:
+                return None
+            position_id = pos.id
 
         now = datetime.utcnow()
         rows = (
             db.query(UserPosition.user_id)
             .filter(
                 UserPosition.tenant_id == tenant_id,
-                UserPosition.position_id == config["position_id"],
+                UserPosition.position_id == position_id,
                 (UserPosition.effective_from.is_(None) | (UserPosition.effective_from <= now)),
                 (UserPosition.effective_to.is_(None) | (UserPosition.effective_to >= now)),
             )

@@ -20,6 +20,15 @@
                 @blur="handleUpdate"
               />
             </n-form-item>
+
+            <n-form-item label="版本标签">
+              <n-input
+                v-model:value="localConfig.versionTag"
+                placeholder="如：v1, v2, v1.1"
+                clearable
+                @blur="handleUpdate"
+              />
+            </n-form-item>
             
             <n-form-item label="访问模式">
               <n-radio-group
@@ -48,6 +57,26 @@
           <!-- 提交设置 -->
           <div class="settings-section">
             <h4 class="section-title">提交设置</h4>
+            
+            <n-form-item label="允许反复提交">
+              <n-switch
+                v-model:value="localConfig.allowRepeatSubmit"
+                @update:value="handleUpdate"
+              />
+              <span style="margin-left: 8px; color: var(--text-3); font-size: 12px;">关闭后每个用户只能提交一次</span>
+            </n-form-item>
+            
+            <n-form-item v-if="localConfig.allowRepeatSubmit" label="最大提交次数">
+              <n-input-number
+                v-model:value="localConfig.maxSubmitCount"
+                :min="0"
+                placeholder="0 表示不限制"
+                style="width: 100%"
+                @blur="handleUpdate"
+              />
+            </n-form-item>
+            
+            <n-divider />
             
             <n-form-item label="允许修改">
               <n-switch
@@ -133,10 +162,13 @@ import type { UISchema } from '@/types/schema'
 
 interface FormSettingsConfig {
   category?: string
+  versionTag?: string
   accessMode: AccessMode
   submitDeadline?: string
   allowEdit: boolean
   maxEditCount: number
+  allowRepeatSubmit: boolean
+  maxSubmitCount: number
   uiSchema: UISchema
 }
 
@@ -198,10 +230,13 @@ const handleDeadlineUpdate = () => {
 const handleUpdate = () => {
   emit('update', {
     category: localConfig.value.category,
+    versionTag: localConfig.value.versionTag,
     accessMode: localConfig.value.accessMode,
     submitDeadline: localConfig.value.submitDeadline,
     allowEdit: localConfig.value.allowEdit,
     maxEditCount: localConfig.value.maxEditCount,
+    allowRepeatSubmit: localConfig.value.allowRepeatSubmit,
+    maxSubmitCount: localConfig.value.maxSubmitCount,
     uiSchema: localConfig.value.uiSchema,
   })
 }

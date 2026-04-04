@@ -101,6 +101,7 @@ async def download_attachment(
         db: Session = Depends(get_db)
 ):
     """下载附件"""
+    from app.core.exceptions import BusinessError
     try:
         attachment = AttachmentService.get_attachment_by_id(
             attachment_id=attachment_id,
@@ -124,10 +125,15 @@ async def download_attachment(
             }
         )
     except NotFoundError as e:
-        return error_response(str(e), 4041)
+        return error_response(str(e), 4041, status_code=404)
+    except BusinessError as e:
+        error_msg = str(e)
+        if "文件读取失败" in error_msg or "文件不存在" in error_msg:
+            return error_response("附件文件不存在", 4041, status_code=404)
+        return error_response(error_msg, 5001, status_code=500)
     except Exception as e:
         logger.error(f"Download attachment error: {e}")
-        return error_response("下载失败", 5001)
+        return error_response("下载失败", 5001, status_code=500)
 
 
 @router.delete("/{attachment_id}", summary="删除附件")

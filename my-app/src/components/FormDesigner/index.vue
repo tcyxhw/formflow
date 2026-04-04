@@ -183,6 +183,7 @@ const resolveErrorMessage = (error: unknown, fallback: string) =>
 const formSettings = computed(() => ({
   name: designerStore.formName,
   category: designerStore.formCategory,
+  versionTag: designerStore.versionTag,
   accessMode: designerStore.accessMode,
   allowEdit: designerStore.allowEdit,
   maxEditCount: designerStore.maxEditCount,
@@ -250,6 +251,9 @@ const handleUpdateSettings = (updates: Partial<FormConfig>) => {
   if (updates.category !== undefined) {
     designerStore.formCategory = updates.category
   }
+  if (updates.versionTag !== undefined) {
+    designerStore.versionTag = updates.versionTag
+  }
   if (updates.accessMode !== undefined) {
     designerStore.accessMode = updates.accessMode
   }
@@ -258,6 +262,12 @@ const handleUpdateSettings = (updates: Partial<FormConfig>) => {
   }
   if (updates.maxEditCount !== undefined) {
     designerStore.maxEditCount = updates.maxEditCount
+  }
+  if (updates.allowRepeatSubmit !== undefined) {
+    designerStore.allowRepeatSubmit = updates.allowRepeatSubmit
+  }
+  if (updates.maxSubmitCount !== undefined) {
+    designerStore.maxSubmitCount = updates.maxSubmitCount
   }
   if (updates.submitDeadline !== undefined) {
     designerStore.submitDeadline = updates.submitDeadline
@@ -331,10 +341,13 @@ const handleSave = async () => {
       access_mode: config.accessMode,
       allow_edit: config.allowEdit,
       max_edit_count: config.maxEditCount,
+      allow_repeat_submit: config.allowRepeatSubmit,
+      max_submit_count: config.maxSubmitCount,
       submit_deadline: config.submitDeadline,
       form_schema: config.formSchema,
       ui_schema: config.uiSchema,
       logic_schema: config.logicSchema,
+      version_tag: designerStore.versionTag,
     }
     
     if (designerStore.formId) {

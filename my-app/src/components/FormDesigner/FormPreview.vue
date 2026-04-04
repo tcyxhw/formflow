@@ -303,6 +303,25 @@
     return type === FieldType.CALCULATED || type === 'calculated'
   }
 
+  // 日期范围格式转换：时间戳数组 -> 字典格式
+  const convertDateRangeForSubmit = (value: unknown, fieldType: string): unknown => {
+    if (isDateRangeField(fieldType) && Array.isArray(value) && value.length === 2) {
+      const [start, end] = value
+      const startDate = new Date(start)
+      const endDate = new Date(end)
+      if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        const formatDate = (d: Date) => {
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+        return { start: formatDate(startDate), end: formatDate(endDate) }
+      }
+    }
+    return value
+  }
+
   const initFormData = () => {
     if (!props.config?.formSchema?.fields || !Array.isArray(props.config.formSchema.fields)) {
       return
@@ -319,8 +338,19 @@
     }
     
     props.config.formSchema.fields.forEach(field => {
-      if (field.defaultValue !== undefined) {
-        formData[field.id] = field.defaultValue
+      let value = field.defaultValue
+      // 日期范围字段格式转换：字典格式 -> 时间戳数组
+      if (isDateRangeField(field.type) && value && typeof value === 'object' && !Array.isArray(value)) {
+        if ('start' in value && 'end' in value) {
+          const startTs = new Date(value.start as string).getTime()
+          const endTs = new Date(value.end as string).getTime()
+          if (!isNaN(startTs) && !isNaN(endTs)) {
+            value = [startTs, endTs]
+          }
+        }
+      }
+      if (value !== undefined) {
+        formData[field.id] = value
       } else {
         formData[field.id] = getDefaultValueForType(field.type)
       }
@@ -766,10 +796,15 @@
       await formRef.value?.validate()
       
       const submitData: FormValues = {}
+      const fields = props.config?.formSchema?.fields || []
+      const fieldTypes: Record<string, string> = {}
+      fields.forEach(f => { fieldTypes[f.id] = f.type })
+      
       Object.keys(formData).forEach(key => {
         const value = formData[key]
         if (value !== null && value !== undefined) {
-          submitData[key] = value
+          const fieldType = fieldTypes[key] || ''
+          submitData[key] = convertDateRangeForSubmit(value, fieldType)
         }
       })
       
@@ -783,10 +818,15 @@
     try {
       // 暂存待发不需要校验必填字段
       const submitData: FormValues = {}
+      const fields = props.config?.formSchema?.fields || []
+      const fieldTypes: Record<string, string> = {}
+      fields.forEach(f => { fieldTypes[f.id] = f.type })
+      
       Object.keys(formData).forEach(key => {
         const value = formData[key]
         if (value !== null && value !== undefined) {
-          submitData[key] = value
+          const fieldType = fieldTypes[key] || ''
+          submitData[key] = convertDateRangeForSubmit(value, fieldType)
         }
       })
       
