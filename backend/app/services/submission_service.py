@@ -294,21 +294,27 @@ class SubmissionService:
 
         # 11. 触发流程（根据 auto_trigger_workflow 参数决定）
         if auto_trigger_workflow:
-            submission.status = SubmissionStatus.SUBMITTED.value
-            SubmissionService._trigger_workflow(
+            workflow_started = SubmissionService._trigger_workflow(
                 form=form,
                 form_version=current_version,
                 submission=submission,
                 tenant_id=tenant_id,
                 db=db,
             )
-            logger.debug(f"已自动触发审批流程: submission_id={submission.id}")
+            if workflow_started:
+                # 自动审批可能在 _trigger_workflow 内部已将状态更新为 approved/rejected
+                # 此处不做任何覆盖，保持当前状态
+                logger.debug(f"已自动触发审批流程: submission_id={submission.id}, status={submission.status}")
+            else:
+                submission.status = SubmissionStatus.PENDING_APPROVAL.value
+                logger.debug(f"流程启动失败，标记为暂存待发: submission_id={submission.id}")
         else:
             submission.status = SubmissionStatus.PENDING_APPROVAL.value
             logger.debug(f"暂存待发，未触发审批流程: submission_id={submission.id}")
 
         db.commit()
-        db.refresh(submission)
+        # 重新查询 submission，避免 handle_task_completion 中 commit 导致对象过期
+        submission = db.query(Submission).filter(Submission.id == submission.id).first()
 
         logger.info(
             f"提交创建成功: submission_id={submission.id}, form_id={request.form_id}, "
@@ -343,8 +349,8 @@ class SubmissionService:
         submission: Submission,
         tenant_id: int,
         db: Session,
-    ) -> None:
-        """创建流程实例并写入首个任务。"""
+    ) -> bool:
+        """创建流程实例并写入首个任务。返回是否成功启动。"""
 
         try:
             ProcessService.start_process(
@@ -354,12 +360,14 @@ class SubmissionService:
                 tenant_id=tenant_id,
                 db=db,
             )
+            return True
         except BusinessError as exc:
             logger.warning(
                 "流程未配置或异常，跳过自动审批: form_id=%s, error=%s",
                 form.id,
                 exc,
             )
+            return False
 
     @staticmethod
     def start_approval(
@@ -403,16 +411,19 @@ class SubmissionService:
         if not form_version:
             raise BusinessError("表单版本不存在")
 
-        # 5. 更新状态并触发流程
-        submission.status = SubmissionStatus.SUBMITTED.value
-
-        SubmissionService._trigger_workflow(
+        # 5. 先触发流程，成功后再更新状态
+        workflow_started = SubmissionService._trigger_workflow(
             form=form,
             form_version=form_version,
             submission=submission,
             tenant_id=tenant_id,
             db=db,
         )
+
+        if not workflow_started:
+            raise BusinessError("审批流程启动失败，请检查流程配置是否正确")
+
+        submission.status = SubmissionStatus.SUBMITTED.value
 
         db.commit()
         db.refresh(submission)
@@ -606,7 +617,23 @@ class SubmissionService:
             )
             raise AuthorizationError("无权删除此提交")
 
-        # 4. 软删除（设置状态）
+        # 4. 状态检查：仅允许删除待提交或已提交（审批中）的记录
+        allowed_statuses = {
+            SubmissionStatus.PENDING_APPROVAL.value,
+            SubmissionStatus.SUBMITTED.value,
+        }
+        if submission.status not in allowed_statuses:
+            status_text = {
+                SubmissionStatus.APPROVED.value: "已通过",
+                SubmissionStatus.REJECTED.value: "已拒绝",
+                SubmissionStatus.DELETED.value: "已删除",
+            }.get(submission.status, submission.status)
+            logger.warning(
+                f"状态不允许删除: submission_id={submission_id}, status={submission.status}"
+            )
+            raise BusinessError(f"当前状态「{status_text}」不允许删除，仅待提交或审批中的记录可删除")
+
+        # 5. 软删除（设置状态）
         submission.status = SubmissionStatus.DELETED.value
         db.commit()
 
@@ -757,9 +784,9 @@ class SubmissionService:
 
         query = db.query(Submission).filter(Submission.tenant_id == tenant_id)
 
-        is_admin = FormPermissionService._is_admin(user_id, tenant_id, db) if user_id else False
-
-        if not is_admin and user_id:
+        # 所有用户（包括管理员）只能看到自己提交的或自己拥有表单的提交
+        # 移除管理员"看所有"的权限，保护用户隐私
+        if user_id:
             form_ids_owned = (
                 db.query(Form.id)
                 .filter(Form.owner_user_id == user_id, Form.tenant_id == tenant_id)
@@ -771,7 +798,7 @@ class SubmissionService:
                     Submission.form_id.in_(form_ids_owned)
                 )
             )
-            logger.debug(f"非管理员用户，添加权限过滤: user_id={user_id}")
+            logger.debug(f"添加权限过滤: user_id={user_id} (只看自己提交的和自己拥有表单的提交)")
 
         if request.form_id:
             query = query.filter(Submission.form_id == request.form_id)

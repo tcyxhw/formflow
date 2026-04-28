@@ -152,9 +152,12 @@ class PermissionChecker:
         """执行权限检查"""
         # 检查角色要求
         if self.required_roles:
+            # 使用用户表中的 tenant_id 字段
+            tenant_id = user.tenant_id
+            
             user_roles = db.query(Role).join(UserRole).filter(
                 UserRole.user_id == user.id,
-                UserRole.tenant_id == user.current_tenant_id
+                UserRole.tenant_id == tenant_id
             ).all()
 
             role_names = [role.name for role in user_roles]

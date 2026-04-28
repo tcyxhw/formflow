@@ -20,6 +20,10 @@
         <div v-if="formConfig?.category" class="form-category">
           {{ formConfig.category }}
         </div>
+        <div class="autosave-status">
+          <span v-if="autoSaving" class="autosave-indicator saving">保存中...</span>
+          <span v-else-if="lastSavedTime" class="autosave-indicator saved">已自动保存 {{ lastSavedTime }}</span>
+        </div>
       </div>
 
       <!-- 权限/表单内容 -->
@@ -55,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import FormRenderer from '@/components/FormRenderer/index.vue'
@@ -80,6 +84,13 @@ const canFill = computed(() => Boolean(permissionOverview.value?.can_fill))
 const editingSubmissionId = ref<number | null>(null)
 const previousSubmissionStatus = ref<string | null>(null)
 const explicitEditSubmissionId = ref<number | null>(null)
+const formData = ref<Record<string, any>>({})
+const autoSaveTimer = ref<ReturnType<typeof setInterval> | null>(null)
+const autoSaving = ref(false)
+const lastSavedTime = ref<string | null>(null)
+
+const resolveErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback
 
 const isEditMode = computed(() => {
   // 只有通过URL参数明确指定编辑某个提交时，才进入编辑模式
@@ -89,9 +100,6 @@ const isEditMode = computed(() => {
   }
   return false
 })
-
-const resolveErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback
 
 const loadFormData = async () => {
   try {
@@ -137,6 +145,9 @@ const loadFormData = async () => {
     } else {
       await checkAndLoadPreviousSubmission(formId)
     }
+
+    // 加载草稿数据并启动自动保存
+    await initAutoSave(formId)
   } catch (error) {
     message.error(resolveErrorMessage(error, '加载失败'))
   } finally {
@@ -295,6 +306,25 @@ const retryPermissionCheck = () => {
   }
 }
 
+const initAutoSave = async (formId: number) => {
+  const hasDraft = await loadDraft(formId)
+  if (!hasDraft && formConfig.value?.formSchema?.fields) {
+    const fields = formConfig.value.formSchema.fields
+    const initialData: Record<string, unknown> = {}
+    fields.forEach((field: any) => {
+      if (field.defaultValue !== undefined) {
+        initialData[field.id] = field.defaultValue
+      }
+    })
+    if (Object.keys(initialData).length > 0) {
+      formData.value = initialData
+    }
+  }
+  if (!isEditMode.value) {
+    startAutoSave()
+  }
+}
+
 const handleSubmit = async (payload: FormSubmissionPayload) => {
   if (!currentFormId.value) {
     message.error('表单尚未准备完成')
@@ -342,12 +372,17 @@ const handleSaveAsDraft = async (payload: FormSubmissionPayload) => {
     return
   }
 
+  // 停止自动保存，避免冲突
+  if (autoSaveTimer.value) {
+    clearInterval(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
+
   try {
-    // 暂存待发：创建提交但不触发审批流程
     await submissionApi.createSubmission({
       form_id: currentFormId.value,
       data: payload as SubmissionData,
-      auto_trigger_workflow: false  // 暂存待发，不触发审批
+      auto_trigger_workflow: false
     })
     message.success('暂存成功，可在"我的审批"中发起审批')
     
@@ -357,8 +392,65 @@ const handleSaveAsDraft = async (payload: FormSubmissionPayload) => {
   }
 }
 
+const loadDraft = async (formId: number, initialData?: Record<string, any>) => {
+  try {
+    const { data } = await submissionApi.getDraft(formId)
+    if (data?.draft_data) {
+      formData.value = data.draft_data
+      if (data.auto_saved_at) {
+        const time = new Date(data.auto_saved_at)
+        lastSavedTime.value = time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      }
+      return true
+    }
+  } catch (error) {
+    console.warn('加载草稿失败:', error)
+  }
+  if (initialData) {
+    formData.value = initialData
+  }
+  return false
+}
+
+const saveDraft = async () => {
+  if (!currentFormId.value || autoSaving.value || isEditMode.value) {
+    return
+  }
+  if (Object.keys(formData.value).length === 0) {
+    return
+  }
+
+  autoSaving.value = true
+  try {
+    await submissionApi.saveDraft({
+      form_id: currentFormId.value,
+      data: formData.value
+    })
+    const now = new Date()
+    lastSavedTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } catch (error) {
+    console.warn('自动保存失败:', error)
+  } finally {
+    autoSaving.value = false
+  }
+}
+
+const startAutoSave = () => {
+  if (autoSaveTimer.value) {
+    clearInterval(autoSaveTimer.value)
+  }
+  autoSaveTimer.value = setInterval(saveDraft, 30000)
+}
+
 onMounted(() => {
   loadFormData()
+})
+
+onUnmounted(() => {
+  if (autoSaveTimer.value) {
+    clearInterval(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
 })
 
 const goHome = () => {
@@ -434,6 +526,21 @@ const exitEdit = () => {
     border-radius: 4px;
     font-size: 14px;
     color: #18a058;
+  }
+
+  .autosave-status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #9ca3af;
+  }
+
+  .autosave-indicator {
+    &.saving {
+      color: #f59e0b;
+    }
+    &.saved {
+      color: #10b981;
+    }
   }
 }
 </style>

@@ -236,6 +236,13 @@
                 <div class="submission-item-header">
                   <div class="submission-time">{{ formatDateTime(submission.created_at) }}</div>
                   <n-tag :type="getStatusType(submission.status)" size="small">
+                    <template #icon v-if="submission.status === 'draft'">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 13 8"/>
+                      </svg>
+                    </template>
                     {{ getStatusText(submission.status) }}
                   </n-tag>
                 </div>
@@ -248,6 +255,15 @@
                   </n-button>
                   <n-button size="small" type="primary" quaternary @click.stop="handleEditSubmission(submission)">
                     编辑
+                  </n-button>
+                  <n-button 
+                    v-if="canDeleteSubmission(submission.status)" 
+                    size="small" 
+                    type="error" 
+                    quaternary 
+                    @click.stop="handleDeleteSubmission(submission)"
+                  >
+                    删除
                   </n-button>
                 </div>
               </div>
@@ -273,15 +289,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useMessage, useDialog } from 'naive-ui'
 import { getFillableForms } from '@/api/workspace'
-import { getSubmissionList } from '@/api/submission'
+import { getSubmissionList, deleteSubmission } from '@/api/submission'
 import type { FillableFormItem } from '@/types/workspace'
 import type { SubmissionListItem } from '@/types/submission'
 import SubmissionDetailModal from '@/components/submission/SubmissionDetailModal.vue'
 
 const router = useRouter()
 const message = useMessage()
+const dialog = useDialog()
 
 // 提交详情弹窗状态
 const showSubmissionModal = ref(false)
@@ -500,6 +517,38 @@ const handleViewSubmission = (submissionId: number) => {
 }
 
 /**
+ * 检查是否可以删除该提交
+ */
+const canDeleteSubmission = (status: string): boolean => {
+  return status === 'pending_approval' || status === 'submitted'
+}
+
+/**
+ * 删除提交记录
+ */
+const handleDeleteSubmission = (submission: SubmissionListItem) => {
+  const statusText = getStatusText(submission.status)
+  dialog.warning({
+    title: '确认删除',
+    content: `确定要删除这条${statusText}的记录吗？删除后无法恢复。`,
+    positiveText: '确定删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await deleteSubmission(submission.id)
+        message.success('删除成功')
+        const index = mySubmissions.value.findIndex(s => s.id === submission.id)
+        if (index !== -1) {
+          mySubmissions.value.splice(index, 1)
+        }
+      } catch (e: any) {
+        message.error(e?.response?.data?.detail || e?.message || '删除失败')
+      }
+    },
+  })
+}
+
+/**
  * 获取分类标签类型
  */
 const getCategoryType = (category: string) => {
@@ -547,7 +596,7 @@ const getStatusType = (status: string) => {
   const typeMap: Record<string, any> = {
     'submitted': 'info',
     'pending_approval': 'warning',
-    'draft': 'default',
+    'draft': 'warning',
     'approved': 'success',
     'rejected': 'error'
   }
@@ -560,10 +609,10 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string): string => {
   const textMap: Record<string, string> = {
     'submitted': '已提交',
-    'pending_approval': '暂存待发',
+    'pending_approval': '待发审批',
     'draft': '草稿',
     'approved': '已通过',
-    'rejected': '已拒绝'
+    'rejected': '已驳回'
   }
   return textMap[status] || status
 }

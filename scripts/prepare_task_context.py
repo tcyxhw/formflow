@@ -241,6 +241,141 @@ def get_affected_area_hints(task_text: str, keywords: List[str], repo_paths: dic
     return hints[:5]
 
 
+def generate_edit_scope(task_text: str, keywords: List[str], profile: str, task_type: Dict[str, bool]) -> dict:
+    """Generate edit scope with expected zones, budget, etc."""
+    task_lower = task_text.lower()
+    
+    expected_zones = []
+    likely_files = []
+    readonly_related_files = []
+    
+    has_style_ui = any(kw in task_lower for kw in STYLE_UI_KEYWORDS)
+    has_risk = any(kw in task_lower for kw in RISK_KEYWORDS)
+    has_contract = any(kw in task_lower for kw in CONTRACT_KEYWORDS)
+    
+    if task_type.get("frontend") and not task_type.get("backend"):
+        expected_zones.append("frontend/src/components")
+        expected_zones.append("frontend/src/views")
+    elif task_type.get("backend") and not task_type.get("frontend"):
+        expected_zones.append("backend/app/services")
+        expected_zones.append("backend/app/models")
+    else:
+        expected_zones.append("backend/app")
+        expected_zones.append("frontend/src")
+    
+    if has_style_ui:
+        expected_zones.append("frontend/styles")
+        expected_zones.append("frontend/src/assets")
+    
+    if has_contract:
+        expected_zones.append("api schema")
+        expected_zones.append("frontend types")
+    
+    if has_risk:
+        expected_zones.append("permission logic")
+        expected_zones.append("auth services")
+        readonly_related_files.append("backend/app/core/security")
+    
+    if profile == "Lite":
+        expansion_risk = "low"
+        max_files = 2
+        max_changed_lines = 120
+    elif profile == "Normal":
+        expansion_risk = "medium"
+        max_files = 5
+        max_changed_lines = 300
+    else:
+        expansion_risk = "high"
+        max_files = 8
+        max_changed_lines = 500
+    
+    return {
+        "expected_zones": expected_zones,
+        "likely_files": likely_files,
+        "readonly_related_files": readonly_related_files,
+        "expansion_risk": expansion_risk,
+        "max_edit_budget": {
+            "max_files": max_files,
+            "max_changed_lines": max_changed_lines,
+        },
+    }
+
+
+def generate_validation_plan(task_text: str, keywords: List[str], task_type: Dict[str, bool]) -> dict:
+    """Generate validation plan with local/targeted/global checks."""
+    task_lower = task_text.lower()
+    
+    local_checks = []
+    targeted_checks = []
+    global_checks = []
+    
+    has_frontend = task_type.get("frontend")
+    has_backend = task_type.get("backend")
+    
+    if has_frontend:
+        local_checks.append("frontend: syntax check")
+        local_checks.append("frontend: single file lint")
+        targeted_checks.append("frontend: component type check")
+        targeted_checks.append("frontend: page build test")
+    
+    if has_backend:
+        local_checks.append("backend: syntax check")
+        local_checks.append("backend: single file type check")
+        targeted_checks.append("backend: service unit test")
+        targeted_checks.append("backend: API module test")
+    
+    global_checks.append("global: full lint")
+    global_checks.append("global: full type check")
+    global_checks.append("global: integration test (via /checkpoint)")
+    
+    return {
+        "local_checks": local_checks,
+        "targeted_checks": targeted_checks,
+        "global_checks": global_checks,
+    }
+
+
+def generate_repair_control() -> dict:
+    """Generate repair control for tracking repair loops."""
+    return {
+        "repair_loop_count": 0,
+        "root_cause_revalidated": False,
+        "stop_loss_triggered": False,
+    }
+
+
+def generate_repair_mode() -> dict:
+    """Generate repair_mode state for repair scenarios."""
+    return {
+        "enabled": False,
+        "target_error": "",
+        "target_scope": "",
+        "repair_loop_count": 0,
+        "root_cause_revalidated": False,
+        "stop_loss_triggered": False,
+    }
+
+
+def generate_repair_summary() -> dict:
+    """Generate repair_summary for repair mode - fixed structure before modification."""
+    return {
+        "error_symptom": "",
+        "suspected_root_cause": "",
+        "minimal_fix_point": "",
+        "do_not_expand_to": [],
+        "local_checks": [],
+        "targeted_checks": [],
+    }
+
+
+def generate_repair_budget() -> dict:
+    """Generate repair_budget to limit single-repair scope."""
+    return {
+        "max_files": 2,
+        "max_changed_lines": 80,
+    }
+
+
 def generate_task_context(
     task_id: str,
     user_request: str,
@@ -251,6 +386,12 @@ def generate_task_context(
     routing: Dict[str, str],
     affected_area_hints: List[str],
     keywords: List[str],
+    edit_scope: dict,
+    validation_plan: dict,
+    repair_control: dict,
+    repair_mode: dict,
+    repair_summary: dict,
+    repair_budget: dict,
 ) -> dict:
     """Generate task_context.json content."""
     now = datetime.now(timezone.utc).isoformat()
@@ -271,6 +412,12 @@ def generate_task_context(
         "routing": routing,
         "affected_area_hints": affected_area_hints,
         "detected_keywords": keywords,
+        "edit_scope": edit_scope,
+        "validation_plan": validation_plan,
+        "repair_control": repair_control,
+        "repair_mode": repair_mode,
+        "repair_summary": repair_summary,
+        "repair_budget": repair_budget,
         "required_runtime_refs": [
             "AGENTS.md",
             "standards/00_ai_digest.md",
@@ -348,6 +495,82 @@ def generate_task_capsule(context: dict) -> str:
         lines.append("- (none)")
     lines.append("")
     
+    edit_scope = context.get("edit_scope", {})
+    lines.append("## Edit Scope")
+    lines.append(f"- Expansion Risk: **{edit_scope.get('expansion_risk', 'N/A')}**")
+    budget = edit_scope.get("max_edit_budget", {})
+    lines.append(f"- Max Files: {budget.get('max_files', 'N/A')}")
+    lines.append(f"- Max Changed Lines: {budget.get('max_changed_lines', 'N/A')}")
+    zones = edit_scope.get("expected_zones", [])
+    if zones:
+        lines.append("- Expected Zones:")
+        for zone in zones:
+            lines.append(f"  - {zone}")
+    lines.append("")
+    
+    validation_plan = context.get("validation_plan", {})
+    lines.append("## Validation Plan")
+    local = validation_plan.get("local_checks", [])
+    if local:
+        lines.append("- Local Checks:")
+        for check in local:
+            lines.append(f"  - {check}")
+    targeted = validation_plan.get("targeted_checks", [])
+    if targeted:
+        lines.append("- Targeted Checks:")
+        for check in targeted:
+            lines.append(f"  - {check}")
+    global_chk = validation_plan.get("global_checks", [])
+    if global_chk:
+        lines.append("- Global Checks:")
+        for check in global_chk:
+            lines.append(f"  - {check}")
+    lines.append("")
+    
+    repair = context.get("repair_control", {})
+    lines.append("## Repair Control")
+    lines.append(f"- Repair Loop Count: {repair.get('repair_loop_count', 0)}")
+    lines.append(f"- Stop Loss Triggered: {repair.get('stop_loss_triggered', False)}")
+    lines.append("")
+    
+    rm = context.get("repair_mode", {})
+    lines.append("## Repair Mode")
+    lines.append(f"- Enabled: {rm.get('enabled', False)}")
+    lines.append(f"- Target Error: {rm.get('target_error', 'N/A')}")
+    lines.append(f"- Target Scope: {rm.get('target_scope', 'N/A')}")
+    lines.append(f"- Repair Loop Count: {rm.get('repair_loop_count', 0)}")
+    lines.append(f"- Root Cause Revalidated: {rm.get('root_cause_revalidated', False)}")
+    lines.append(f"- Stop Loss Triggered: {rm.get('stop_loss_triggered', False)}")
+    lines.append("")
+    
+    rs = context.get("repair_summary", {})
+    lines.append("## Repair Summary")
+    lines.append(f"- Error Symptom: {rs.get('error_symptom', 'N/A')}")
+    lines.append(f"- Suspected Root Cause: {rs.get('suspected_root_cause', 'N/A')}")
+    lines.append(f"- Minimal Fix Point: {rs.get('minimal_fix_point', 'N/A')}")
+    do_not_expand = rs.get("do_not_expand_to", [])
+    if do_not_expand:
+        lines.append("- Do Not Expand To:")
+        for item in do_not_expand:
+            lines.append(f"  - {item}")
+    local_chk = rs.get("local_checks", [])
+    if local_chk:
+        lines.append("- Local Checks:")
+        for chk in local_chk:
+            lines.append(f"  - {chk}")
+    targeted_chk = rs.get("targeted_checks", [])
+    if targeted_chk:
+        lines.append("- Targeted Checks:")
+        for chk in targeted_chk:
+            lines.append(f"  - {chk}")
+    lines.append("")
+    
+    rb = context.get("repair_budget", {})
+    lines.append("## Repair Budget")
+    lines.append(f"- Max Files: {rb.get('max_files', 'N/A')}")
+    lines.append(f"- Max Changed Lines: {rb.get('max_changed_lines', 'N/A')}")
+    lines.append("")
+    
     lines.append("## Required References")
     refs = context.get("required_runtime_refs", [])
     for ref in refs:
@@ -394,6 +617,13 @@ def main():
     routing = determine_routing(profile, task_type, predicted_domains, task_stage_routing)
     affected_area_hints = get_affected_area_hints(args.task, keywords, repo_paths)
     
+    edit_scope = generate_edit_scope(args.task, keywords, profile, task_type)
+    validation_plan = generate_validation_plan(args.task, keywords, task_type)
+    repair_control = generate_repair_control()
+    repair_mode = generate_repair_mode()
+    repair_summary = generate_repair_summary()
+    repair_budget = generate_repair_budget()
+    
     task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     context = generate_task_context(
@@ -406,6 +636,12 @@ def main():
         routing=routing,
         affected_area_hints=affected_area_hints,
         keywords=keywords,
+        edit_scope=edit_scope,
+        validation_plan=validation_plan,
+        repair_control=repair_control,
+        repair_mode=repair_mode,
+        repair_summary=repair_summary,
+        repair_budget=repair_budget,
     )
     
     output_dir = Path(args.output_dir)

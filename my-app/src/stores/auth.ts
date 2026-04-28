@@ -349,6 +349,7 @@ export const useAuthStore = defineStore('auth', {
     
     // 🔧 新增：更新刷新令牌
     updateRefreshToken(newRefreshToken: string) {
+      // ✅ 必须同时更新内存和 localStorage
       this.refreshToken = newRefreshToken
       
       // 更新localStorage

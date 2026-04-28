@@ -200,6 +200,12 @@ const authRoutes: RouteRecordRaw[] = [
         meta: { title: '用户管理', requiresAuth: true }
       },
       {
+        path: 'department-post',
+        name: 'DepartmentPostManage',
+        component: () => import('@/views/admin/DepartmentPostManage.vue'),
+        meta: { title: '部门与岗位管理', requiresAuth: true }
+      },
+      {
         path: 'batch-import',
         redirect: '/admin/users'
       }

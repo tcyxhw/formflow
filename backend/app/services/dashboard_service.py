@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.form import Submission
 from app.models.user import ApprovalGroupMember, User
-from app.models.workflow import ProcessInstance, Task, WorkflowOperationLog
+from app.models.workflow import ProcessInstance, Task, TaskActionLog
 from app.schemas.dashboard_schemas import (
     DashboardStatsResponse,
     DashboardTrendResponse,
@@ -141,21 +141,30 @@ class DashboardService:
 
         week_ago = datetime.utcnow() - timedelta(days=7)
 
-        # 查询各种操作类型的数量
+        # 查询各种操作类型的数量（基于 TaskActionLog）
         results = (
             db.query(
-                WorkflowOperationLog.operation_type,
-                func.count(WorkflowOperationLog.id).label("count"),
+                TaskActionLog.action,
+                func.count(TaskActionLog.id).label("cnt"),
             )
-            .filter(WorkflowOperationLog.tenant_id == tenant_id)
-            .filter(WorkflowOperationLog.created_at >= week_ago)
-            .filter(WorkflowOperationLog.operation_type.in_(["APPROVE", "REJECT"]))
-            .group_by(WorkflowOperationLog.operation_type)
+            .join(Task, Task.id == TaskActionLog.task_id)
+            .join(ProcessInstance, ProcessInstance.id == Task.process_instance_id)
+            .filter(ProcessInstance.tenant_id == tenant_id)
+            .filter(TaskActionLog.created_at >= week_ago)
+            .filter(TaskActionLog.action.in_(["approve", "reject", "auto_approve", "auto_reject"]))
+            .group_by(TaskActionLog.action)
             .all()
         )
 
         # 构建状态映射
-        status_map = {row.operation_type: row.count for row in results}
+        status_map = {"APPROVE": 0, "REJECT": 0}
+        for row in results:
+            action = row.action
+            cnt = row.cnt
+            if action in ("approve", "auto_approve"):
+                status_map["APPROVE"] += cnt
+            elif action in ("reject", "auto_reject"):
+                status_map["REJECT"] += cnt
 
         # 构建分布数据
         data = [
@@ -288,6 +297,7 @@ class DashboardService:
             .filter(Task.tenant_id == tenant_id)
             .filter(Task.status == "completed")
             .filter(Task.completed_at >= week_ago)
+            .filter(Task.completed_at > Task.created_at)
             .scalar()
         )
 
@@ -309,22 +319,28 @@ class DashboardService:
 
         week_ago = datetime.utcnow() - timedelta(days=7)
 
-        total_count = func.count().filter(
-            WorkflowOperationLog.operation_type.in_(["APPROVE", "REJECT"])
-        )
-
-        result = (
-            db.query(
-                func.count().filter(WorkflowOperationLog.operation_type == "APPROVE")
-                * 100.0
-                / func.nullif(total_count, 0)
-            )
-            .filter(WorkflowOperationLog.tenant_id == tenant_id)
-            .filter(WorkflowOperationLog.created_at >= week_ago)
+        approve_count = (
+            db.query(func.count(TaskActionLog.id))
+            .join(Task, Task.id == TaskActionLog.task_id)
+            .join(ProcessInstance, ProcessInstance.id == Task.process_instance_id)
+            .filter(ProcessInstance.tenant_id == tenant_id)
+            .filter(TaskActionLog.created_at >= week_ago)
+            .filter(TaskActionLog.action.in_(["approve", "auto_approve"]))
             .scalar()
-        )
+        ) or 0
 
-        if result is None:
+        reject_count = (
+            db.query(func.count(TaskActionLog.id))
+            .join(Task, Task.id == TaskActionLog.task_id)
+            .join(ProcessInstance, ProcessInstance.id == Task.process_instance_id)
+            .filter(ProcessInstance.tenant_id == tenant_id)
+            .filter(TaskActionLog.created_at >= week_ago)
+            .filter(TaskActionLog.action.in_(["reject", "auto_reject"]))
+            .scalar()
+        ) or 0
+
+        total = approve_count + reject_count
+        if total == 0:
             return 0.0
 
-        return round(float(result), 1)
+        return round(approve_count * 100.0 / total, 1)

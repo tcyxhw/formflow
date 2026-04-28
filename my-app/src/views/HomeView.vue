@@ -25,6 +25,7 @@
             <button type="button" class="nav-item">管理</button>
             <div class="nav-dropdown" v-show="activeGroup === 'admin'">
               <button class="dropdown-item" @click="handleNav('/department/import')" v-if="canAccessImport">岗位导入</button>
+              <button class="dropdown-item" @click="handleNav('/admin/department-post')" v-if="canAccessUserManagement">部门与岗位管理</button>
               <button class="dropdown-item" @click="handleNav('/admin/batch-import')" v-if="canAccessUserManagement">用户管理</button>
             </div>
           </div>

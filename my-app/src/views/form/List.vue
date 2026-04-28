@@ -787,13 +787,27 @@
   }
 
   // 配置流程
-  const handleConfigureFlow = (row: FormResponse) => {
-    if (!row.flow_definition_id) {
-      message.error('该表单没有关联的流程定义')
-      return
+  const handleConfigureFlow = async (row: FormResponse) => {
+    let flowDefinitionId = row.flow_definition_id
+    
+    if (!flowDefinitionId) {
+      try {
+        message.info('正在创建流程定义...')
+        const res = await formApi.getOrCreateFlowDefinition(row.id)
+        flowDefinitionId = res.data?.flow_definition_id
+        if (!flowDefinitionId) {
+          message.error('无法创建流程定义')
+          return
+        }
+        message.success('流程定义已创建')
+      } catch (error) {
+        message.error(resolveErrorMessage(error, '创建流程定义失败'))
+        return
+      }
     }
+    
     router.push({
-      path: `/flow/configurator/${row.flow_definition_id}`,
+      path: `/flow/configurator/${flowDefinitionId}`,
     })
   }
 

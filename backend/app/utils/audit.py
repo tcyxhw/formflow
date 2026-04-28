@@ -400,9 +400,12 @@ def create_audit_log_sync(
         before_json = json.dumps(before_data, ensure_ascii=False) if before_data else None
         after_json = json.dumps(after_data, ensure_ascii=False) if after_data else None
 
+        # 系统用户 ID=0 不存在于 user 表，外键约束会失败，设为 None 表示系统操作
+        effective_actor_user_id = actor_user_id if actor_user_id and actor_user_id > 0 else None
+
         audit = AuditLog(
             tenant_id=tenant_id,
-            actor_user_id=actor_user_id,
+            actor_user_id=effective_actor_user_id,
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,

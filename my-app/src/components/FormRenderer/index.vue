@@ -1,6 +1,13 @@
 <template>
   <div class="form-renderer">
-    <FormPreview :config="config" :edit-mode="editMode" @submit="handleSubmit" @save-as-draft="handleSaveAsDraft" />
+    <FormPreview
+      :config="config"
+      :edit-mode="editMode"
+      :model-value="modelValue"
+      @update:model-value="handleUpdate"
+      @submit="handleSubmit"
+      @save-as-draft="handleSaveAsDraft"
+    />
   </div>
 </template>
 
@@ -11,13 +18,22 @@ import type { FormConfig, FormSubmissionPayload } from '@/types/form'
 interface Props {
   config: FormConfig
   editMode?: boolean
+  modelValue?: Record<string, unknown>
 }
 
-defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  modelValue: () => ({})
+})
+
 const emit = defineEmits<{
+  (e: 'update:modelValue', value: Record<string, unknown>): void
   (e: 'submit', payload: FormSubmissionPayload): void
   (e: 'saveAsDraft', payload: FormSubmissionPayload): void
 }>()
+
+const handleUpdate = (value: Record<string, unknown>) => {
+  emit('update:modelValue', value)
+}
 
 const handleSubmit = (payload: FormSubmissionPayload) => {
   emit('submit', payload)

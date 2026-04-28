@@ -191,7 +191,7 @@ class TaskActionLog(DBBaseModel):
 
     tenant_id = Column(Integer, nullable=False, comment="租户ID")
     task_id = Column(Integer, ForeignKey("task.id"), nullable=False)
-    actor_user_id = Column(Integer, ForeignKey("user.id"), nullable=False, comment="操作人ID")
+    actor_user_id = Column(Integer, ForeignKey("user.id"), nullable=True, comment="操作人ID，系统操作时为NULL")
     action = Column(String(20), nullable=False, comment="动作")
     detail_json = Column(JSON, nullable=True, comment="操作详情")
 

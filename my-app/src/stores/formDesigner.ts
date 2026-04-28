@@ -162,16 +162,31 @@ export const useFormDesignerStore = defineStore('formDesigner', () => {
     submitDeadline.value = config.submit_deadline
     flowDefinitionId.value = config.flow_definition_id
     
-    if (config.schema_json) {
-      fields.value = config.schema_json.fields || []
+    if (config.schema_json && config.schema_json.fields) {
+      fields.value = config.schema_json.fields
+    } else {
+      fields.value = []
     }
     
     if (config.ui_schema_json) {
       uiSchema.value = config.ui_schema_json
+    } else {
+      uiSchema.value = {
+        layout: {
+          type: 'vertical',
+          labelWidth: 120,
+          labelPosition: 'right',
+          size: 'medium',
+        },
+        rows: [],
+        groups: [],
+      }
     }
     
     if (config.logic_json) {
       logicSchema.value = config.logic_json
+    } else {
+      logicSchema.value = { rules: [] }
     }
     
     dirty.value = false

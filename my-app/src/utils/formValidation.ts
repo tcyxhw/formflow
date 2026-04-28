@@ -32,10 +32,10 @@ export class FormValidation {
   /**
    * 验证Schema（与后端 _validate_schema 保持一致）
    */
-  static validateSchema(schema: FormSchema): string[] {
+  static validateSchema(schema?: FormSchema): string[] {
     const errors: string[] = []
     
-    if (!schema.fields || schema.fields.length === 0) {
+    if (!schema || !schema.fields || schema.fields.length === 0) {
       errors.push('表单至少需要一个字段')
       return errors
     }
@@ -90,8 +90,13 @@ export class FormValidation {
   /**
    * 验证Logic
    */
-  static validateLogic(logic: LogicSchema, schema: FormSchema): string[] {
+  static validateLogic(logic?: LogicSchema, schema?: FormSchema): string[] {
     const errors: string[] = []
+    
+    if (!logic || !logic.rules || !schema || !schema.fields) {
+      return errors
+    }
+    
     const fieldIds = new Set(schema.fields.map(f => f.id))
     
     logic.rules.forEach(rule => {
@@ -123,7 +128,11 @@ export class FormValidation {
   /**
    * 检查循环依赖（与后端 check_circular_dependency 保持一致）
    */
-  static hasCircularDependency(fields: FormField[]): boolean {
+  static hasCircularDependency(fields?: FormField[]): boolean {
+    if (!fields || fields.length === 0) {
+      return false
+    }
+    
     // 构建依赖图
     const graph = new Map<string, string[]>()
     

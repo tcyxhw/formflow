@@ -171,12 +171,24 @@
   interface Props {
     config: FormConfig
     editMode?: boolean
+    modelValue?: Record<string, any>
   }
 
   const props = withDefaults(defineProps<Props>(), {
-    editMode: false
+    editMode: false,
+    modelValue: () => ({})
   })
+
+  watch(() => props.modelValue, (newVal) => {
+    if (newVal && Object.keys(newVal).length > 0) {
+      Object.keys(newVal).forEach(key => {
+        formData[key] = newVal[key]
+      })
+    }
+  }, { immediate: false, deep: true })
+
   const emit = defineEmits<{
+    (e: 'update:modelValue', value: Record<string, any>): void
     (e: 'submit', payload: FormSubmissionPayload): void
     (e: 'saveAsDraft', payload: FormSubmissionPayload): void
   }>()
@@ -859,24 +871,29 @@
       message.error(resolveErrorMessage(error, '重置失败'))
     }
   }
-  
-    // 监听 config 变化，重新初始化表单数据（用于编辑模式加载历史数据）
-    watch(
-      () => ({
-        fields: props.config?.formSchema?.fields,
-        attachments: props.config?.attachments
-      }),
-      (newVal, oldVal) => {
-        if (newVal.fields) {
-          const fieldsChanged = newVal.fields !== oldVal?.fields
-          const attachmentsChanged = newVal.attachments !== oldVal?.attachments
-          if (fieldsChanged || attachmentsChanged || !oldVal) {
-            initFormData()
-          }
+
+  const updateFormData = () => {
+    emit('update:modelValue', { ...formData })
+  }
+
+  watch(formData, updateFormData, { deep: true })
+
+  watch(
+    () => ({
+      fields: props.config?.formSchema?.fields,
+      attachments: props.config?.attachments
+    }),
+    (newVal, oldVal) => {
+      if (newVal.fields) {
+        const fieldsChanged = newVal.fields !== oldVal?.fields
+        const attachmentsChanged = newVal.attachments !== oldVal?.attachments
+        if (fieldsChanged || attachmentsChanged || !oldVal) {
+          initFormData()
         }
-      },
-      { deep: true, immediate: true }
-    )
+      }
+    },
+    { deep: true, immediate: true }
+  )
   </script>
   
   <style scoped lang="scss">

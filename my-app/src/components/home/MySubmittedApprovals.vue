@@ -662,7 +662,7 @@ const currentTaskClaimStatus = computed(() => {
 
 .panel-content {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
   padding: 16px;
 }
 
@@ -731,6 +731,7 @@ const currentTaskClaimStatus = computed(() => {
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .approval-item:hover {

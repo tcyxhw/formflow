@@ -129,10 +129,78 @@ class ProcessService:
         db.flush()
 
         ProcessService._create_task_for_node(
-            process, start_node, tenant_id, db, initiator_id=initiator_id
+            process, start_node, tenant_id, db, form_data=form_data, initiator_id=initiator_id
         )
         db.flush()
-        db.refresh(process)
+
+        # 评估首个节点的自动审批配置
+        # 扁平化 form_data 到 context 顶层，使条件字段（如 course_credit）能直接访问
+        # 同时保留 form_data 嵌套结构以支持 form_data.xxx 路径
+        context: Dict[str, object] = {"form_data": form_data, "initiator_id": initiator_id}
+        if form_data and isinstance(form_data, dict):
+            context.update(form_data)
+
+        requires_manual = ProcessService._should_sample_for_manual_review(process, start_node)
+        auto_decision = AutoActionDecision(outcome=None)
+        
+        logger.info(
+            "start_process 自动审批评估: node_id=%s, auto_approve_enabled=%s, requires_manual=%s, auto_approve_cond=%s, auto_reject_cond=%s",
+            start_node.id,
+            start_node.auto_approve_enabled,
+            requires_manual,
+            start_node.auto_approve_cond,
+            start_node.auto_reject_cond,
+        )
+        
+        if not requires_manual:
+            auto_decision = ProcessService._evaluate_auto_action(start_node, context)
+            logger.info(
+                "start_process 自动审批结果: node_id=%s, outcome=%s",
+                start_node.id,
+                auto_decision.outcome,
+            )
+
+        if auto_decision.outcome:
+            # 获取刚创建的任务
+            task = (
+                db.query(Task)
+                .filter(
+                    Task.process_instance_id == process.id,
+                    Task.node_id == start_node.id,
+                )
+                .first()
+            )
+            if task:
+                # 保存任务关键属性，避免 _complete_task_automatically 中 db.commit() 导致对象过期
+                task_id = task.id
+                task_node_id = task.node_id
+                task_process_id = task.process_instance_id
+
+                detail = ProcessService._build_auto_action_log_detail(
+                    node=start_node,
+                    decision=auto_decision,
+                    context=context,
+                    sampled=requires_manual,
+                )
+                ProcessService._complete_task_automatically(
+                    task=task,
+                    action=auto_decision.outcome,
+                    detail=detail,
+                    db=db,
+                )
+
+                # 重新查询任务，避免访问已过期对象
+                task = db.query(Task).filter(Task.id == task_id).first()
+                if task:
+                    ProcessService.handle_task_completion(
+                        task=task,
+                        tenant_id=tenant_id,
+                        db=db,
+                        context={"auto_action": auto_decision.outcome, **context},
+                    )
+
+        # 返回前重新查询 process，避免 handle_task_completion 中 commit 导致对象过期
+        process = db.query(ProcessInstance).filter(ProcessInstance.id == process.id).first()
         return process
 
     @staticmethod
@@ -156,6 +224,17 @@ class ProcessService:
         """
 
         context = context or {}
+
+        # 自动补充表单数据到 context，确保自动审批条件评估能正确访问 form_data.xxx
+        if "form_data" not in context and process.form_data_snapshot:
+            context["form_data"] = process.form_data_snapshot
+
+        # 扁平化 form_data 到 context 顶层，使条件字段（如 course_credit）能直接访问
+        form_data_ctx = context.get("form_data")
+        if form_data_ctx and isinstance(form_data_ctx, dict):
+            for key, value in form_data_ctx.items():
+                if key not in context:
+                    context[key] = value
 
         if from_node and not ParallelRuntimeService.handle_branch_arrival(
             process_instance_id=process.id,
@@ -281,7 +360,12 @@ class ProcessService:
                 auto_decision = ProcessService._evaluate_auto_action(node, context)
 
             if auto_decision.outcome:
-                auto_task = ProcessService._create_task_for_node(process, node, tenant_id, db)
+                auto_task = ProcessService._create_task_for_node(
+                    process, node, tenant_id, db,
+                    form_data=context.get("form_data"),
+                    initiator_id=context.get("initiator_id"),
+                    auto_action=auto_decision.outcome,
+                )
                 detail = ProcessService._build_auto_action_log_detail(
                     node=node,
                     decision=auto_decision,
@@ -294,15 +378,24 @@ class ProcessService:
                     detail=detail,
                     db=db,
                 )
-                ProcessService.handle_task_completion(
-                    task=auto_task,
-                    tenant_id=tenant_id,
-                    db=db,
-                    context={"auto_action": auto_decision.outcome, **context},
-                )
+                # 重新查询任务，避免 _complete_task_automatically 中 db.commit() 导致对象过期
+                auto_task = db.query(Task).filter(Task.id == auto_task.id).first()
+                if auto_task:
+                    ProcessService.handle_task_completion(
+                        task=auto_task,
+                        tenant_id=tenant_id,
+                        db=db,
+                        context={"auto_action": auto_decision.outcome, **context},
+                    )
                 continue
 
-            tasks.append(ProcessService._create_task_for_node(process, node, tenant_id, db))
+            tasks.append(
+                ProcessService._create_task_for_node(
+                    process, node, tenant_id, db,
+                    form_data=context.get("form_data"),
+                    initiator_id=context.get("initiator_id"),
+                )
+            )
 
         return tasks
 
@@ -384,6 +477,7 @@ class ProcessService:
         db: Session,
         form_data: Optional[Dict[str, Any]] = None,
         initiator_id: Optional[int] = None,
+        auto_action: Optional[str] = None,
     ) -> Task:
         """创建节点任务。
 
@@ -393,6 +487,7 @@ class ProcessService:
         :param db: 数据库会话
         :param form_data: 表单数据（用于FORM_FIELD类型）
         :param initiator_id: 发起人ID（用于DEPARTMENT_POST类型）
+        :param auto_action: 自动审批动作（"approve"/"reject"/None），仅在自动审批时传入
         :return: 创建的任务
 
         Time: O(1), Space: O(1)
@@ -418,9 +513,9 @@ class ProcessService:
             node, tenant_id, db, form_data=form_data, initiator_id=initiator_id
         )
         
-        # 如果节点配置了自动审批时自动认领，则创建任务时直接认领
+        # 仅在自动审批时才应用自动认领逻辑
         claimed_by = None
-        if node.auto_claim_on_auto_action:
+        if auto_action and node.auto_claim_on_auto_action:
             claimed_by = SYSTEM_USER_ID
         
         task = Task(
@@ -493,7 +588,7 @@ class ProcessService:
             )
             return
 
-        ProcessService._cancel_pending_node_tasks(process.id, node.id, tenant_id, db)
+        ProcessService._cancel_pending_node_tasks(process.id, node.id, tenant_id, db, exclude_task_id=task.id)
         ProcessService.advance_from_node(
             process=process,
             from_node=node,
@@ -582,9 +677,12 @@ class ProcessService:
         tenant_id: int,
         db: Session,
         exclude_completed: bool = True,
+        exclude_task_id: Optional[int] = None,
     ) -> None:
-        """取消节点下剩余未完成任务，避免重复处理。"""
+        """取消节点下剩余未完成任务，避免重复处理。
 
+        :param exclude_task_id: 需要排除的任务ID（通常是当前正在处理的任务，避免被错误取消）
+        """
         query = (
             db.query(Task)
             .filter(
@@ -596,6 +694,9 @@ class ProcessService:
         if exclude_completed:
             query = query.filter(Task.status != "completed")
 
+        if exclude_task_id:
+            query = query.filter(Task.id != exclude_task_id)
+
         for pending in query.all():
             pending.status = "canceled"
 
@@ -603,18 +704,33 @@ class ProcessService:
     def _evaluate_auto_action(node: FlowNode, context: Optional[Dict[str, object]]) -> AutoActionDecision:
         """评估节点的自动审批配置。"""
 
+        logger.info(
+            "_evaluate_auto_action: node_id=%s, auto_approve_enabled=%s, context_keys=%s",
+            node.id,
+            node.auto_approve_enabled,
+            list((context or {}).keys()),
+        )
+
         if not node.auto_approve_enabled:
+            logger.info("_evaluate_auto_action: auto_approve_enabled is False, skipping")
             return AutoActionDecision(outcome=None)
 
         ctx = context or {}
+        has_any_condition = False
         for field_name, decision in (
             ("auto_reject_cond", "reject"),
             ("auto_approve_cond", "approve"),
         ):
             condition_data: Optional[Dict[str, Any]] = getattr(node, field_name)
+            logger.info(
+                "_evaluate_auto_action: field=%s, condition_data=%s",
+                field_name,
+                condition_data,
+            )
             if not condition_data:
                 continue
 
+            has_any_condition = True
             is_valid, error_msg = ProcessService._validate_route_condition(condition_data)
             if not is_valid:
                 logger.warning(
@@ -632,13 +748,27 @@ class ProcessService:
                     validation_error=error_msg,
                 )
 
-            if RouteEvaluator.evaluate(condition_data, ctx):
+            eval_result = RouteEvaluator.evaluate(condition_data, ctx)
+            logger.info(
+                "_evaluate_auto_action: field=%s, eval_result=%s",
+                field_name,
+                eval_result,
+            )
+            if eval_result:
                 return AutoActionDecision(
                     outcome=decision,
                     matched_condition=field_name,
                     condition_payload=condition_data,
                 )
 
+        # 开启了自动审批但没有配置任何条件时，默认自动通过
+        if not has_any_condition:
+            logger.info(
+                "_evaluate_auto_action: auto_approve_enabled=True but no conditions configured, defaulting to approve",
+            )
+            return AutoActionDecision(outcome="approve")
+
+        logger.info("_evaluate_auto_action: no condition matched, returning None")
         return AutoActionDecision(outcome=None)
 
     @staticmethod
@@ -648,15 +778,22 @@ class ProcessService:
         detail: Optional[Dict[str, Any]],
         db: Session,
     ) -> None:
-        """以系统身份完成任务并记录审计。"""
+        """以系统身份完成任务并记录审计。
+
+        注意：系统用户 ID=0 不存在于 user 表，外键约束会失败，因此 completed_by 设为 None。
+        """
+        # 系统用户 ID=0 不存在于 user 表，外键约束会失败，设为 None 表示系统操作
+        effective_completed_by = SYSTEM_USER_ID if SYSTEM_USER_ID > 0 else None
 
         task.status = "completed"
         task.action = action
-        task.completed_by = SYSTEM_USER_ID
+        task.completed_by = effective_completed_by
         task.completed_at = datetime.utcnow()
+        # TaskActionLog 的 actor_user_id 允许 NULL，表示系统自动操作
         log = TaskActionLog(
+            tenant_id=task.tenant_id,
             task_id=task.id,
-            actor_user_id=SYSTEM_USER_ID,
+            actor_user_id=None,
             action=f"auto_{action}",
             detail_json=detail or {"message": "系统自动决策"},
         )
@@ -667,7 +804,7 @@ class ProcessService:
             resource_id=task.id,
             after_data=detail,
             tenant_id=task.tenant_id,
-            actor_user_id=SYSTEM_USER_ID,
+            actor_user_id=effective_completed_by,
             db=db,
         )
 
@@ -810,7 +947,7 @@ class ProcessService:
             # 驳回到发起人，流程结束
             process.state = "canceled"
             ProcessService._cancel_pending_node_tasks(
-                process.id, node.id, tenant_id, db, exclude_completed=False
+                process.id, node.id, tenant_id, db, exclude_completed=False, exclude_task_id=task.id
             )
             ProcessService._update_submission_status(
                 process=process,
@@ -835,11 +972,12 @@ class ProcessService:
             if previous_node:
                 # 取消当前节点的所有待处理任务
                 ProcessService._cancel_pending_node_tasks(
-                    process.id, node.id, tenant_id, db, exclude_completed=False
+                    process.id, node.id, tenant_id, db, exclude_completed=False, exclude_task_id=task.id
                 )
                 # 重新创建上一个节点的任务
                 new_task = ProcessService._create_task_for_node(
-                    process, previous_node, tenant_id, db
+                    process, previous_node, tenant_id, db,
+                    form_data=process.form_data_snapshot,
                 )
                 logger.info(
                     f"流程驳回到上一个节点",
@@ -854,7 +992,7 @@ class ProcessService:
                 # 没有上一个节点，退回到发起人（流程结束）
                 process.state = "canceled"
                 ProcessService._cancel_pending_node_tasks(
-                    process.id, node.id, tenant_id, db, exclude_completed=False
+                    process.id, node.id, tenant_id, db, exclude_completed=False, exclude_task_id=task.id
                 )
                 ProcessService._update_submission_status(
                     process=process,
@@ -880,7 +1018,7 @@ class ProcessService:
             )
             process.state = "canceled"
             ProcessService._cancel_pending_node_tasks(
-                process.id, node.id, tenant_id, db, exclude_completed=False
+                process.id, node.id, tenant_id, db, exclude_completed=False, exclude_task_id=task.id
             )
             ProcessService._update_submission_status(
                 process=process,

@@ -29,6 +29,12 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Scripts / Tools (development only)
+backend/scripts/seed_test_data.py
+backend/scripts/generate_test_data.py
+backend/scripts/delete_approval.py
+backend/scripts/cleanup_error_submissions.py
+
 .claude/settings.local.json
 **/__pycache__/
 *.pyc

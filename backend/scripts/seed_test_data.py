@@ -90,6 +90,8 @@ def seed_test_data():
         # ========== 3. 创建角色 ==========
         roles = {}
         role_configs = [
+            {"name": "系统管理员", "description": "系统管理员角色"},
+            {"name": "租户管理员", "description": "租户管理员角色"},
             {"name": "老师", "description": "教师角色"},
         ]
 
@@ -115,7 +117,75 @@ def seed_test_data():
 
             roles[cfg["name"]] = role
 
-        # ========== 4. 创建用户 ==========
+        # ========== 4. 创建管理员用户 ==========
+        admin_users = {}
+        admin_configs = [
+            {
+                "account": "admin",
+                "name": "系统管理员",
+                "roles": ["系统管理员"],
+                "password": "admin123",
+                "email": "admin@university.edu",
+                "phone": "13900000000",
+            },
+            {
+                "account": "tenant_admin",
+                "name": "租户管理员",
+                "roles": ["租户管理员"],
+                "password": "admin123",
+                "email": "tenant_admin@university.edu",
+                "phone": "13900000001",
+            },
+        ]
+
+        for cfg in admin_configs:
+            user = db.query(User).filter(
+                User.tenant_id == tenant_id,
+                User.account == cfg["account"]
+            ).first()
+
+            if not user:
+                user = User(
+                    tenant_id=tenant_id,
+                    account=cfg["account"],
+                    password_hash=hash_password(cfg["password"]),
+                    name=cfg["name"],
+                    email=cfg["email"],
+                    phone=cfg.get("phone"),
+                    is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(user)
+                db.flush()
+                print(f"✅ 创建管理员用户: {cfg['name']} ({cfg['account']}) (id={user.id})")
+            else:
+                print(f"ℹ️  管理员用户已存在: {cfg['name']} ({cfg['account']}) (id={user.id})")
+
+            admin_users[cfg["account"]] = user
+
+            # 关联角色
+            for role_name in cfg["roles"]:
+                role = roles[role_name]
+                existing_ur = db.query(UserRole).filter(
+                    UserRole.user_id == user.id,
+                    UserRole.role_id == role.id,
+                    UserRole.tenant_id == tenant_id,
+                ).first()
+
+                if not existing_ur:
+                    ur = UserRole(
+                        tenant_id=tenant_id,
+                        user_id=user.id,
+                        role_id=role.id,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    db.add(ur)
+                    db.flush()
+                    print(f"  ✅ 关联管理员角色: {cfg['name']} -> {role_name}")
+
+        # ========== 5. 创建普通用户 ==========
         users = {}
         user_configs = [
             {
@@ -251,11 +321,16 @@ def seed_test_data():
 
         db.commit()
 
-        # ========== 5. 打印测试信息 ==========
+        # ========== 6. 打印测试信息 ==========
         print("\n" + "=" * 60)
         print("📋 测试数据创建完成！")
         print("=" * 60)
-        print("\n🔑 测试账号（密码均为 123456）：")
+        print("\n🔑 管理员账号（密码均为 admin123）：")
+        for account, user in admin_users.items():
+            roles_str = ", ".join(cfg["roles"][0] for cfg in admin_configs if cfg["account"] == account)
+            print(f"  - {account}: {user.name}（{roles_str}）")
+        
+        print("\n🔑 普通用户账号（密码均为 123456）：")
         for account, user in users.items():
             dept_name = next(
                 (k for k, v in departments.items()

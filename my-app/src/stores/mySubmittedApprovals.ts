@@ -68,6 +68,9 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   const flowLoading = ref(false)
   const fieldLabels = ref<Record<string, string>>({})
 
+  // 当前加载的流程实例 ID（用于追踪 reactivity）
+  const currentFlowInstanceId = ref<number | null>(null)
+
   // 获取指定流程实例的流程图数据
   const getFlowData = (processInstanceId: number | null) => {
     if (!processInstanceId) return { nodes: [], routes: [], timeline: null }
@@ -75,12 +78,21 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   }
 
   // 兼容旧引用（供 FlowDiagram 组件使用）
-  const flowNodes = computed(() => selectedApproval.value?.process_instance_id
-    ? getFlowData(selectedApproval.value.process_instance_id).nodes : [])
-  const flowRoutes = computed(() => selectedApproval.value?.process_instance_id
-    ? getFlowData(selectedApproval.value.process_instance_id).routes : [])
-  const processTimeline = computed(() => selectedApproval.value?.process_instance_id
-    ? getFlowData(selectedApproval.value.process_instance_id).timeline : null)
+  const flowNodes = computed(() => {
+    const pid = currentFlowInstanceId.value
+    if (!pid) return []
+    return getFlowData(pid).nodes
+  })
+  const flowRoutes = computed(() => {
+    const pid = currentFlowInstanceId.value
+    if (!pid) return []
+    return getFlowData(pid).routes
+  })
+  const processTimeline = computed(() => {
+    const pid = currentFlowInstanceId.value
+    if (!pid) return null
+    return getFlowData(pid).timeline
+  })
 
   // 用于取消请求的 AbortController
   let currentFlowRequest: AbortController | null = null
@@ -136,10 +148,12 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
     currentFlowRequest = new AbortController()
 
     flowLoading.value = true
-    flowNodes.value = []
-    flowRoutes.value = []
     fieldLabels.value = {}
-    processTimeline.value = null
+
+    // 设置当前流程实例 ID，触发 computed refs 更新
+    if (processInstanceId) {
+      currentFlowInstanceId.value = processInstanceId
+    }
 
     try {
       // 获取表单字段标签映射
@@ -307,6 +321,7 @@ export const useMySubmittedApprovals = defineStore('mySubmittedApprovals', () =>
   // 清除选择
   const clearSelection = () => {
     selectedApproval.value = null
+    currentFlowInstanceId.value = null
     // 不清除 flowDataMap，数据按 process_instance_id 缓存
   }
 

@@ -23,21 +23,22 @@
 
       <n-card class="filter-card" :bordered="false">
         <n-form inline :model="filters" label-placement="left">
-          <n-form-item label="表单 ID">
-            <n-input-number
-              v-model:value="filters.form_id"
-              :min="1"
-              placeholder="请输入表单 ID"
-              clearable
-              style="width: 180px"
-            />
-          </n-form-item>
           <n-form-item label="状态">
             <n-select
               v-model:value="filters.status"
               :options="statusOptions"
               placeholder="全部"
               clearable
+              style="width: 140px"
+            />
+          </n-form-item>
+          <n-form-item label="表单ID">
+            <n-input-number
+              v-model:value="filters.form_id"
+              placeholder="请输入表单ID"
+              clearable
+              :show-button="false"
+              @keyup.enter="fetchList"
               style="width: 140px"
             />
           </n-form-item>
@@ -54,6 +55,12 @@
             <n-space>
               <n-button type="primary" @click="fetchList">查询</n-button>
               <n-button @click="resetFilters">重置</n-button>
+              <n-button type="primary" :loading="exporting" @click="handleExportAll">
+                <template #icon>
+                  <n-icon :component="DownloadOutline" />
+                </template>
+                导出
+              </n-button>
             </n-space>
           </n-form-item>
         </n-form>
@@ -62,8 +69,8 @@
       <n-card :bordered="false">
         <template #header>
           <div class="table-header">
-            <h3>提交列表</h3>
             <n-space>
+              <h3>提交列表</h3>
               <n-button text @click="fetchList">
                 <template #icon>
                   <n-icon :component="RefreshOutline" />
@@ -98,14 +105,6 @@
         />
 
         <div class="table-footer">
-          <div class="export-section">
-            <n-button type="primary" :loading="exporting" @click="handleExportAll">
-              <template #icon>
-                <n-icon :component="DownloadOutline" />
-              </template>
-              导出全部
-            </n-button>
-          </div>
           <n-pagination
             v-model:page="pagination.page"
             v-model:page-size="pagination.pageSize"
@@ -304,6 +303,11 @@ const columns: DataTableColumns<SubmissionListItem> = [
     }
   },
   {
+    title: '表单ID',
+    key: 'form_id',
+    width: 90
+  },
+  {
     title: '提交人',
     key: 'submitter_name',
     minWidth: 140
@@ -465,19 +469,20 @@ const handleExportSelected = async () => {
   }
 }
 
-// 导出全部（按当前筛选条件）
+// 导出当前显示的数据
 const handleExportAll = async () => {
-  if (!filters.form_id) {
-    message.warning('请先指定表单 ID 再导出数据')
+  if (submissions.value.length === 0) {
+    message.warning('没有可导出的数据')
     return
   }
 
   exporting.value = true
   try {
+    const submissionIds = submissions.value.map(item => item.id)
     const payload: SubmissionExportRequest = {
-      form_id: filters.form_id,
+      form_id: undefined,
       format: 'excel',
-      submission_ids: submissions.value.map((item) => item.id),
+      submission_ids: submissionIds,
     }
     const res = await exportSubmissions(payload)
     await handleExportResponse(res)

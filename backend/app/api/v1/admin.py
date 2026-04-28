@@ -821,7 +821,268 @@ async def list_positions(
     })
 
 
-@router.get("/groups/list", summary="获取审批群组列表（简化版）")
+@router.post("/departments", summary="创建部门")
+@audit_log(action="create_department", resource_type="department")
+async def create_department(
+        name: str = Query(..., description="部门名称"),
+        type: str = Query("department", description="部门类型"),
+        parent_id: Optional[int] = Query(None, description="上级部门ID"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    创建部门
+
+    参数:
+    - name: 部门名称
+    - type: 部门类型 (college/office/department/class)
+    - parent_id: 上级部门ID（可选）
+    """
+    from app.models.user import Department
+
+    if db.query(Department).filter(Department.tenant_id == tenant_id, Department.name == name).first():
+        raise BusinessError(f"部门 {name} 已存在")
+
+    parent = None
+    if parent_id:
+        parent = db.query(Department).filter(Department.id == parent_id, Department.tenant_id == tenant_id).first()
+        if not parent:
+            raise NotFoundError("上级部门不存在")
+
+    department = Department(
+        name=name,
+        type=type,
+        parent_id=parent_id,
+        tenant_id=tenant_id
+    )
+    db.add(department)
+    db.commit()
+    db.refresh(department)
+
+    return success_response(data={
+        "id": department.id,
+        "name": department.name,
+        "type": department.type,
+        "parent_id": department.parent_id
+    })
+
+
+@router.delete("/departments/{department_id}", summary="删除部门")
+@audit_log(action="delete_department", resource_type="department")
+async def delete_department(
+        department_id: int = Path(..., description="部门ID"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    删除部门
+
+    注意：会同时删除部门下的岗位关联
+    """
+    from app.models.user import Department, DepartmentPost, UserDepartment
+
+    department = db.query(Department).filter(
+        Department.id == department_id,
+        Department.tenant_id == tenant_id
+    ).first()
+
+    if not department:
+        raise NotFoundError("部门不存在")
+
+    db.query(DepartmentPost).filter(DepartmentPost.department_id == department_id).delete()
+    db.query(UserDepartment).filter(UserDepartment.department_id == department_id).delete()
+
+    db.delete(department)
+    db.commit()
+
+    return success_response(message="部门删除成功")
+
+
+@router.post("/positions", summary="创建岗位")
+@audit_log(action="create_position", resource_type="position")
+async def create_position(
+        name: str = Query(..., description="岗位名称"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    创建岗位
+
+    参数:
+    - name: 岗位名称
+    """
+    from app.models.user import Position
+
+    if db.query(Position).filter(Position.tenant_id == tenant_id, Position.name == name).first():
+        raise BusinessError(f"岗位 {name} 已存在")
+
+    position = Position(
+        name=name,
+        tenant_id=tenant_id
+    )
+    db.add(position)
+    db.commit()
+    db.refresh(position)
+
+    return success_response(data={
+        "id": position.id,
+        "name": position.name
+    })
+
+
+@router.delete("/positions/{position_id}", summary="删除岗位")
+@audit_log(action="delete_position", resource_type="position")
+async def delete_position(
+        position_id: int = Path(..., description="岗位ID"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    删除岗位
+
+    注意：会同时删除岗位相关的所有关联
+    """
+    from app.models.user import Position, DepartmentPost, UserPosition
+
+    position = db.query(Position).filter(
+        Position.id == position_id,
+        Position.tenant_id == tenant_id
+    ).first()
+
+    if not position:
+        raise NotFoundError("岗位不存在")
+
+    db.query(DepartmentPost).filter(DepartmentPost.post_id == position_id).delete()
+    db.query(UserPosition).filter(UserPosition.position_id == position_id).delete()
+
+    db.delete(position)
+    db.commit()
+
+    return success_response(message="岗位删除成功")
+
+
+@router.get("/department-posts/list", summary="获取部门岗位关联列表")
+async def list_department_posts(
+        department_id: Optional[int] = Query(None, description="部门ID"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    获取部门岗位关联列表
+    """
+    from app.models.user import DepartmentPost, Department, Position
+
+    query = db.query(DepartmentPost, Department.name, Position.name).join(
+        Department, DepartmentPost.department_id == Department.id
+    ).join(
+        Position, DepartmentPost.post_id == Position.id
+    ).filter(DepartmentPost.tenant_id == tenant_id)
+
+    if department_id:
+        query = query.filter(DepartmentPost.department_id == department_id)
+
+    results = query.all()
+
+    items = [
+        {
+            "id": dp.id,
+            "department_id": dp.department_id,
+            "department_name": dept_name,
+            "post_id": dp.post_id,
+            "post_name": pos_name,
+            "is_head": dp.is_head
+        }
+        for dp, dept_name, pos_name in results
+    ]
+
+    return success_response(data={"items": items, "total": len(items)})
+
+
+@router.post("/department-posts", summary="创建部门岗位关联")
+@audit_log(action="create_department_post", resource_type="department_post")
+async def create_department_post(
+        department_id: int = Query(..., description="部门ID"),
+        post_id: int = Query(..., description="岗位ID"),
+        is_head: bool = Query(False, description="是否主负责人岗位"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    创建部门岗位关联
+    """
+    from app.models.user import Department, Position, DepartmentPost
+
+    department = db.query(Department).filter(
+        Department.id == department_id,
+        Department.tenant_id == tenant_id
+    ).first()
+    if not department:
+        raise NotFoundError("部门不存在")
+
+    position = db.query(Position).filter(
+        Position.id == post_id,
+        Position.tenant_id == tenant_id
+    ).first()
+    if not position:
+        raise NotFoundError("岗位不存在")
+
+    existing = db.query(DepartmentPost).filter(
+        DepartmentPost.department_id == department_id,
+        DepartmentPost.post_id == post_id,
+        DepartmentPost.tenant_id == tenant_id
+    ).first()
+    if existing:
+        raise BusinessError("该部门已关联此岗位")
+
+    dept_post = DepartmentPost(
+        department_id=department_id,
+        post_id=post_id,
+        is_head=is_head,
+        tenant_id=tenant_id
+    )
+    db.add(dept_post)
+    db.commit()
+    db.refresh(dept_post)
+
+    return success_response(data={
+        "id": dept_post.id,
+        "department_id": dept_post.department_id,
+        "post_id": dept_post.post_id,
+        "is_head": dept_post.is_head
+    })
+
+
+@router.delete("/department-posts/{department_post_id}", summary="删除部门岗位关联")
+@audit_log(action="delete_department_post", resource_type="department_post")
+async def delete_department_post(
+        department_post_id: int = Path(..., description="部门岗位关联ID"),
+        current_user: User = Depends(RequireAdmin),
+        tenant_id: int = Depends(get_current_tenant_id),
+        db: Session = Depends(get_db)
+):
+    """
+    删除部门岗位关联
+    """
+    from app.models.user import DepartmentPost
+
+    dept_post = db.query(DepartmentPost).filter(
+        DepartmentPost.id == department_post_id,
+        DepartmentPost.tenant_id == tenant_id
+    ).first()
+
+    if not dept_post:
+        raise NotFoundError("部门岗位关联不存在")
+
+    db.delete(dept_post)
+    db.commit()
+
+    return success_response(message="部门岗位关联删除成功")
 async def list_groups(
         keyword: Optional[str] = Query(None, description="搜索关键词"),
         page: int = Query(1, ge=1, description="页码"),

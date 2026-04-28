@@ -89,6 +89,102 @@ task:
       - field: "fallback.reasons"
         is_array: true
 
+  - id: T7
+    name: "Edit scope fields exist"
+    description: "Task context should have edit_scope with expected fields"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      edit_scope_exists: true
+      edit_scope_expansion_risk: true
+      edit_scope_budget: true
+    checks:
+      - field: "edit_scope.expansion_risk"
+        nonempty: true
+      - field: "edit_scope.max_edit_budget.max_files"
+        nonempty: true
+      - field: "edit_scope.max_edit_budget.max_changed_lines"
+        nonempty: true
+
+  - id: T8
+    name: "Validation plan fields exist"
+    description: "Task context should have validation_plan with local/targeted/global"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      validation_plan_exists: true
+    checks:
+      - field: "validation_plan.local_checks"
+        is_array: true
+      - field: "validation_plan.targeted_checks"
+        is_array: true
+      - field: "validation_plan.global_checks"
+        is_array: true
+
+  - id: T9
+    name: "Repair control fields exist"
+    description: "Task context should have repair_control with loop count and stop loss"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      repair_control_exists: true
+    checks:
+      - field: "repair_control.repair_loop_count"
+        equals: 0
+      - field: "repair_control.root_cause_revalidated"
+        equals: false
+      - field: "repair_control.stop_loss_triggered"
+        equals: false
+
+  - id: T10
+    name: "Repair mode fields exist"
+    description: "Task context should have repair_mode with enabled and target fields"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      repair_mode_exists: true
+    checks:
+      - field: "repair_mode.enabled"
+        equals: false
+      - field: "repair_mode.target_error"
+        equals: ""
+      - field: "repair_mode.target_scope"
+        equals: ""
+      - field: "repair_mode.repair_loop_count"
+        equals: 0
+      - field: "repair_mode.root_cause_revalidated"
+        equals: false
+      - field: "repair_mode.stop_loss_triggered"
+        equals: false
+
+  - id: T11
+    name: "Repair summary fields exist"
+    description: "Task context should have repair_summary with fix point structure"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      repair_summary_exists: true
+    checks:
+      - field: "repair_summary.error_symptom"
+        equals: ""
+      - field: "repair_summary.suspected_root_cause"
+        equals: ""
+      - field: "repair_summary.minimal_fix_point"
+        equals: ""
+      - field: "repair_summary.do_not_expand_to"
+        is_array: true
+      - field: "repair_summary.local_checks"
+        is_array: true
+      - field: "repair_summary.targeted_checks"
+        is_array: true
+
+  - id: T12
+    name: "Repair budget fields exist"
+    description: "Task context should have repair_budget with max limits"
+    command: "python3 scripts/prepare_task_context.py --task \"修复按钮样式问题\""
+    expected:
+      repair_budget_exists: true
+    checks:
+      - field: "repair_budget.max_files"
+        equals: 2
+      - field: "repair_budget.max_changed_lines"
+        equals: 80
+
 # ============================================================
 # CHECKPOINT BENCHMARKS
 # ============================================================
